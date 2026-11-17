@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
+  <title>Codex</title>
+  <link rel="icon" href="/assets/chatgpt-icon.png" type="image/png">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/vendor/markdown-it.min.js" defer></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="/assets/chatgpt-icon.png" alt="" width="29" height="29">
+      <span id="connection" data-state="connecting" role="status"><span class="sr-only">正在连接 Mac</span></span>
+      <span class="brand-name">Codex</span>
+    </div>
+    <div id="workspace" aria-label="Mac 工作区"></div>
+  </header>
+  <main>
+    <section id="conversation" aria-label="对话">
+      <div class="conversation-heading">
+        <div class="conversation-context">
+          <div class="section-title" id="thread-title">新聊天</div>
+        </div>
+        <button type="button" id="older" class="subtle" hidden>更早的记录</button>
+        <div class="changes-control">
+          <button type="button" id="changes-toggle" class="subtle" aria-controls="changes" aria-expanded="false">变更 <span id="changes-count">0</span></button>
+          <span id="changes-notice" role="status"></span>
+        </div>
+        <details id="progress" hidden>
+          <summary><span id="progress-title" role="status">进度</span></summary>
+          <ul id="activity" aria-label="任务进度"></ul>
+        </details>
+      </div>
+      <div id="messages" role="log">
+        <p class="empty">在下屏输入任务，Codex 的回复会显示在这里。</p>
+      </div>
+    </section>
+    <aside id="changes" aria-labelledby="changes-title" hidden>
+      <div class="changes-heading">
+        <strong id="changes-title">本轮变更</strong>
+        <button type="button" id="changes-close" class="subtle" aria-label="关闭变更面板">关闭</button>
+      </div>
+      <ul id="change-files" aria-label="变更文件"></ul>
+      <div id="change-detail" aria-live="polite"></div>
+    </aside>
+    <section id="controls" aria-label="任务控制">
+      <nav class="tabs" aria-label="下屏工作区">
+        <button id="task-tab" type="button" aria-pressed="true">新聊天</button>
+        <button id="pinned-tab" type="button" aria-pressed="false">置顶</button>
+        <button id="sessions-tab" type="button" aria-pressed="false">全部会话</button>
+      </nav>
+      <form id="composer">
+        <div class="composer-box">
+          <textarea id="prompt" aria-label="给 Codex 发消息" maxlength="8000" placeholder="询问 Codex，或交给它一个任务…" spellcheck="false" enterkeyhint="send"></textarea>
+          <div class="composer-toolbar">
+            <div class="composer-options">
+              <label for="model">模型</label><select id="model"></select>
+              <label for="effort">推理强度</label><select id="effort"></select>
+            </div>
+            <button type="submit" id="send">发送</button>
+            <button type="button" id="stop" class="subtle" hidden>停止</button>
+          </div>
+        </div>
+      </form>
+      <section id="sessions" aria-label="会话列表" hidden>
+        <form id="search-form">
+          <input id="session-search" type="search" aria-label="搜索会话" placeholder="搜索会话" maxlength="150">
+          <button type="submit" class="subtle">搜索</button>
+          <button type="button" id="archived" class="subtle">归档</button>
+        </form>
+        <ul id="session-list">
+          <li id="session-empty" class="empty" hidden>没有匹配的会话。</li>
+          <li id="session-more" hidden><button id="more" type="button" class="subtle">加载更多</button></li>
+        </ul>
+        <div id="session-menu" class="session-menu" role="group" aria-label="会话操作" hidden>
+          <div id="session-menu-actions">
+            <button type="button" id="session-pin" class="subtle">置顶</button>
+            <button type="button" id="rename" class="subtle">重命名</button>
+            <button type="button" id="archive" class="subtle">归档</button>
+          </div>
+          <div id="session-menu-confirmation" hidden>
+            <p id="session-confirmation-label"></p>
+            <div class="buttons">
+              <button type="button" id="session-cancel" class="subtle">取消</button>
+              <button type="button" id="session-confirm">确认归档</button>
+            </div>
+          </div>
+          <form id="session-rename" hidden>
+            <label for="session-name">会话的新名称</label>
+            <input id="session-name" type="text" maxlength="120" required>
+            <div class="buttons">
+              <button type="button" id="cancel-rename" class="subtle">取消</button>
+              <button type="submit">确定</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      <p id="error" role="alert" hidden></p>
+    </section>
+  </main>
+</body>
+</html>
