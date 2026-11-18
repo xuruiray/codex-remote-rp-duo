@@ -1,5 +1,6 @@
 import {mountChanges} from "./changes-panel.js";
 import {mountConversation} from "./conversation.js";
+import {mountFollowSidebar} from "./follow-sidebar.js";
 
 const params = new URLSearchParams(location.hash.slice(1));
 const token = params.get("token") || "";
@@ -10,7 +11,7 @@ if (panel === "top") {
   heading.querySelector(".conversation-context").append(document.getElementById("workspace"));
   document.querySelector("header").append(heading);
 }
-if (panel === "single") document.querySelector(".empty").textContent = "输入任务后，Codex 的回复会显示在这里。";
+if (panel === "single") document.querySelector("#messages .empty").textContent = "输入任务后，Codex 的回复会显示在这里。";
 const find = (id) => document.getElementById(id);
 const activity = find("activity");
 const progress = find("progress");
@@ -23,6 +24,8 @@ let busy = false;
 let requests = false;
 let online = false;
 let interruptible = false;
+let activeTurn = null;
+let runningThreads = new Set();
 let lastActivity = "";
 let activeThread = null;
 let activeName = null;
@@ -41,7 +44,7 @@ const draftStorageKey = "duo-codex-composer-drafts";
 const maxDrafts = 20;
 const savedComposer = readComposer();
 let drafts = savedComposer.drafts;
-let pendingSubmission = savedComposer.pendingSubmission;
+let pendingSubmissions = savedComposer.pendingSubmissions;
 let modelOptions = [];
 const effortLabels = {none: "无", minimal: "极低", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高"};
 
@@ -49,20 +52,24 @@ function readComposer() {
   try {
     if (panel !== "top") {
       const saved = JSON.parse(localStorage.getItem(draftStorageKey));
-      if (Array.isArray(saved)) return {drafts: new Map(saved), pendingSubmission: null};
-      if (saved) return {drafts: new Map(saved.drafts), pendingSubmission: saved.pendingSubmission};
+      if (Array.isArray(saved)) return {drafts: new Map(saved), pendingSubmissions: []};
+      if (saved) return {drafts: new Map(saved.drafts), pendingSubmissions: readPending(saved)};
     }
   } catch (_) {
     // Storage can be unavailable. The composer can still work in memory.
   }
-  return {drafts: new Map(), pendingSubmission: null};
+  return {drafts: new Map(), pendingSubmissions: []};
+}
+
+function readPending(saved) {
+  return saved.pendingSubmissions || (saved.pendingSubmission ? [saved.pendingSubmission] : []);
 }
 
 function saveDrafts() {
   if (panel === "top") return;
   while (drafts.size > maxDrafts) drafts.delete(drafts.keys().next().value);
   try {
-    localStorage.setItem(draftStorageKey, JSON.stringify({drafts: [...drafts], pendingSubmission}));
+    localStorage.setItem(draftStorageKey, JSON.stringify({drafts: [...drafts], pendingSubmissions}));
   } catch (_) {
     // The in-memory draft is still available for a live connection switch.
   }
@@ -81,12 +88,13 @@ function buttons() {
   prompt.disabled = activeArchived;
   prompt.placeholder = activeArchived ? "恢复此会话后可以继续对话。" : "询问 Codex，或交给它一个任务…";
   find("stop").disabled = !online || !interruptible || requests;
-  find("task-tab").disabled = !online || busy || requests;
+  find("task-tab").disabled = !online || requests;
   find("task-tab").setAttribute("aria-pressed", String(view === "chat" && !activeThread));
   find("session-pin").disabled = !online || requests;
-  find("rename").disabled = !online || busy || requests;
-  find("archive").disabled = !online || busy || requests;
-  find("session-confirm").disabled = !online || busy || requests;
+  const menuBusy = runningThreads.has(sessionMenuTarget?.thread.id);
+  find("rename").disabled = !online || menuBusy || requests;
+  find("archive").disabled = !online || menuBusy || requests;
+  find("session-confirm").disabled = !online || menuBusy || requests;
   modelPicker.disabled = !online || busy || requests || !modelPicker.options.length;
   effortPicker.disabled = !online || busy || requests || effortPicker.options.length < 2;
 }
@@ -143,27 +151,53 @@ const conversation = panel === "bottom" ? null : mountConversation({
   },
 });
 
+async function loadFollowPins() {
+  const threads = [];
+  const visited = new Set();
+  let cursor = null;
+  do {
+    visited.add(cursor);
+    const result = await request("threads", {pinned: true, cursor});
+    threads.push(...result.threads);
+    cursor = result.next;
+  } while (cursor && !visited.has(cursor));
+  return threads;
+}
+
+const followSidebar = panel === "top" ? mountFollowSidebar({
+  root: find("follow-sidebar"),
+  loadPinned: loadFollowPins,
+  select: async (id) => {
+    await request("select", {id});
+    await refresh();
+  },
+}) : null;
+
 function render(state) {
   const reconnected = !online && state.connected;
   online = state.connected;
   busy = state.busy;
   interruptible = state.interruptible;
+  activeTurn = state.turn_id;
+  runningThreads = new Set(state.running_thread_ids || []);
   const selectionChanged = activeThread !== state.thread_id;
+  const externalSelection = hasSnapshot && selectionChanged && !requests;
+  bindSubmissionThreads(state.submissions, state.thread_id);
   if (panel !== "top" && (!hasSnapshot || selectionChanged)) {
-    if (selectionChanged && activeThread === null && pendingSubmission?.thread === null &&
-        state.submissions?.[pendingSubmission.id]) {
-      rememberDraft(state.thread_id, drafts.get(null) ?? prompt.value);
-      rememberDraft(null, "");
-    }
     prompt.value = drafts.get(state.thread_id) || "";
   }
   hasSnapshot = true;
   activeThread = state.thread_id;
   activeName = state.thread_name;
   activeArchived = state.archived;
+  if (panel === "bottom" && externalSelection) {
+    find("error").hidden = true;
+    if (view !== "chat") tab("chat");
+  }
+  followSidebar?.update(state);
   renderModels(state.models, state.default_model);
   applyRestoredDraft();
-  confirmSubmission(state.submissions);
+  confirmSubmissions(state.submissions);
   find("thread-title").textContent = activeName || (activeThread ? "对话" : "新聊天");
   find("workspace").textContent = state.workspace + (state.workspace_fallback ? "（原目录已不存在）" : "");
   const transport = location.hostname === "127.0.0.1" ? "USB" : "Wi-Fi";
@@ -185,10 +219,9 @@ function render(state) {
       lastActivity = activitySignature;
     }
   }
-  if (selectionChanged) {
-    for (const entry of find("session-list").querySelectorAll("button[data-thread-id]")) {
-      entry.classList.toggle("selected", entry.dataset.threadId === activeThread);
-    }
+  for (const entry of find("session-list").querySelectorAll("button[data-thread-id]")) {
+    entry.classList.toggle("selected", entry.dataset.threadId === activeThread);
+    entry.querySelector(".session-running").hidden = !runningThreads.has(entry.dataset.threadId);
   }
   if (reconnected && view !== "chat") loadSessions();
   buttons();
@@ -202,6 +235,7 @@ async function refresh() {
   } catch (failure) {
     if (sequence !== refreshSequence) return;
     online = false;
+    followSidebar?.disconnected();
     updateConnection("connecting", "Mac 连接中断 · 正在重连");
     if (failure.name === "TypeError" || failure.name === "TimeoutError") {
       window.DuoConnection?.checkAlternate();
@@ -219,12 +253,12 @@ function updateConnection(state, label) {
 
 function connectionDraft() {
   if (requests) return null;
-  return {thread: activeThread, text: prompt.value, drafts: [...drafts], pendingSubmission,
+  return {thread: activeThread, text: prompt.value, drafts: [...drafts], pendingSubmissions,
           model: modelPicker.value, effort: effortPicker.value};
 }
 
 function restoreConnectionDraft(state) {
-  pendingSubmission = state.pendingSubmission;
+  pendingSubmissions = readPending(state);
   if (panel !== "top" && Array.isArray(state.drafts)) {
     drafts = new Map(state.drafts);
     saveDrafts();
@@ -248,24 +282,39 @@ function applyRestoredDraft() {
   restoredDraft = null;
 }
 
-function confirmSubmission(submissions) {
-  const receipt = pendingSubmission && submissions?.[pendingSubmission.id];
-  if (!receipt || receipt.status === "sending") return;
-  const submitted = pendingSubmission;
-  pendingSubmission = null;
-  const error = find("error");
-  if (receipt.status === "sent") {
-    const thread = submitted.thread ?? activeThread;
-    if (drafts.get(thread) === submitted.text) rememberDraft(thread, "");
-    if ((!submitted.thread || submitted.thread === activeThread) && prompt.value === submitted.text) {
-      prompt.value = "";
+function bindSubmissionThreads(receipts, nextThread) {
+  for (const submitted of pendingSubmissions) {
+    const thread = receipts?.[submitted.id]?.thread_id;
+    if (submitted.thread !== null || !thread) continue;
+    submitted.thread = thread;
+    if (activeThread === null && nextThread === thread) {
+      rememberDraft(thread, hasSnapshot ? prompt.value : drafts.get(null) || "");
+      rememberDraft(null, "");
+    } else {
+      saveDrafts();
     }
-    error.hidden = true;
-  } else {
-    error.textContent = "消息未发送：" + receipt.error;
-    error.hidden = false;
   }
-  saveDrafts();
+}
+
+function confirmSubmissions(receipts) {
+  if (!pendingSubmissions.length) return;
+  const count = pendingSubmissions.length;
+  pendingSubmissions = pendingSubmissions.filter(submitted => {
+    const receipt = receipts?.[submitted.id];
+    if (!receipt || receipt.status === "sending") return true;
+    const thread = submitted.thread;
+    const error = find("error");
+    if (receipt.status === "sent") {
+      if (drafts.get(thread) === submitted.text) rememberDraft(thread, "");
+      if (thread === activeThread && prompt.value === submitted.text) prompt.value = "";
+      if (thread === activeThread) error.hidden = true;
+    } else if (thread === activeThread) {
+      error.textContent = "消息未发送：" + receipt.error;
+      error.hidden = false;
+    }
+    return false;
+  });
+  if (count !== pendingSubmissions.length) saveDrafts();
 }
 
 async function change(path, data) {
@@ -301,12 +350,14 @@ find("composer").addEventListener("submit", async (event) => {
   const text = prompt.value;
   focusEntry();
   if (!online || busy || requests || !text.trim()) return;
-  if (!pendingSubmission || pendingSubmission.text !== text || pendingSubmission.thread !== activeThread) {
-    pendingSubmission = {id: crypto.randomUUID(), text, thread: activeThread};
+  let submission = pendingSubmissions.find(item => item.thread === activeThread && item.text === text);
+  if (!submission) {
+    submission = {id: crypto.randomUUID(), text, thread: activeThread};
+    pendingSubmissions.push(submission);
     saveDrafts();
   }
   if (await change("prompt", {
-    text, thread_id: pendingSubmission.thread, submission: pendingSubmission.id,
+    text, thread_id: submission.thread, submission: submission.id,
     model: modelPicker.value || null, effort: effortPicker.value || null,
   })) {
     if (panel === "bottom") focusEntry();
@@ -321,9 +372,10 @@ async function openComposer(action, data) {
 }
 
 find("task-tab").addEventListener("click", () => openComposer("new", {}));
-find("stop").addEventListener("click", () => change("stop", {}));
+find("stop").addEventListener("click", () => change("stop", {thread_id: activeThread, turn_id: activeTurn}));
 function tab(mode) {
-  if (mode !== view) {
+  const changed = mode !== view;
+  if (changed) {
     ++listRequest;
     listLoading = false;
     cursor = null;
@@ -339,6 +391,7 @@ function tab(mode) {
   find("sessions-tab").setAttribute("aria-pressed", String(view === "all"));
   find("pinned-tab").setAttribute("aria-pressed", String(view === "pinned"));
   focusEntry();
+  if (changed && panel === "bottom") window.DuoConnection?.consoleInputChanged?.();
 }
 
 async function loadSessions(append = false) {
@@ -353,16 +406,19 @@ async function loadSessions(append = false) {
   const footer = find("session-more");
   const error = find("error");
   error.hidden = true;
+  if (!append) {
+    const empty = find("session-empty");
+    empty.hidden = true;
+    footer.hidden = true;
+    list.replaceChildren(empty, footer);
+    list.scrollTop = 0;
+  }
   try {
     const result = await request("threads", {
       archived, search: listSearch,
       cursor: append ? cursor : null, pinned: view === "pinned",
     });
     if (ticket !== listRequest) return;
-    if (!append) {
-      list.replaceChildren(find("session-empty"), footer);
-      list.scrollTop = 0;
-    }
     const displayed = new Set([...list.querySelectorAll(".session-open")].map(button => button.dataset.threadId));
     for (const thread of result.threads) {
       if (displayed.has(thread.id)) continue;
@@ -402,7 +458,11 @@ function makeSessionRow(thread, archived) {
   const pinned = document.createElement("span");
   pinned.className = "session-pinned";
   pinned.textContent = "已置顶";
-  heading.append(title, pinned);
+  const status = document.createElement("span");
+  status.className = "session-running";
+  status.textContent = "运行中";
+  status.hidden = !runningThreads.has(thread.id);
+  heading.append(title, pinned, status);
   const meta = document.createElement("span");
   meta.className = "session-meta";
   meta.textContent = thread.workspace + " · " + new Date(thread.updated_at * 1000).toLocaleDateString("zh-CN");
@@ -441,6 +501,7 @@ function openSessionMenu(target, fromKeyboard) {
   find("archive").textContent = target.archived ? "恢复" : "归档";
   find("session-menu").hidden = false;
   target.trigger.setAttribute("aria-expanded", "true");
+  buttons();
   positionSessionMenu();
   if (fromKeyboard) find("session-pin").focus({preventScroll: true});
   else focusEntry();
@@ -470,7 +531,10 @@ function closeSessionMenu(returnFocus = false) {
 
 async function runSessionAction(target, action, data) {
   if (!(await change(action, {id: target.thread.id, ...data}))) return;
-  if (!target.row.isConnected) return;
+  if (!target.row.isConnected) {
+    if (view !== "chat") await loadSessions();
+    return;
+  }
   if (action === "archive" || action === "unarchive" || (action === "pin" && view === "pinned" && !data.pinned)) {
     target.row.remove();
     updateListFooter();

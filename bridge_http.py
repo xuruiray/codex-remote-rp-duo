@@ -13,6 +13,7 @@ ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/changes-panel.js": ("changes-panel.js", "application/javascript; charset=utf-8"),
+    "/follow-sidebar.js": ("follow-sidebar.js", "application/javascript; charset=utf-8"),
     "/conversation.js": ("conversation.js", "application/javascript; charset=utf-8"),
     "/diff-view.js": ("diff-view.js", "application/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
@@ -59,6 +60,7 @@ def make_handler(codex, token):
                     panel = parse_qs(url.query).get("panel", [""])[0]
                     self.reply(200, codex.snapshot(
                         include_messages=panel != "bottom", include_controls=panel != "top",
+                        include_following=panel == "top",
                     ))
             else:
                 self.reply(404, {"error": "页面不存在"})
@@ -86,7 +88,7 @@ def make_handler(codex, token):
                     codex.start_prompt(value, data.get("model"), data.get("effort"), submission,
                                        data.get("thread_id"))
                 elif path == "/api/stop":
-                    codex.interrupt()
+                    codex.interrupt(data.get("thread_id"), data.get("turn_id"))
                 elif path == "/api/new":
                     codex.reset()
                 elif path == "/api/threads":

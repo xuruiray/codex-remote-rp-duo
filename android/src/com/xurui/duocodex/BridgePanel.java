@@ -32,7 +32,7 @@ final class BridgePanel extends FrameLayout {
     private static final long PROBE_INTERVAL_MS = 3000;
 
     private final Button retry;
-    private final Runnable onPageReady;
+    private final Runnable restoreKeyboard;
     private final Predicate<KeyEvent> controllerKey;
     private final ExecutorService probes = Executors.newSingleThreadExecutor();
     private final Runnable reconnect = this::connect;
@@ -48,9 +48,9 @@ final class BridgePanel extends FrameLayout {
     private boolean pageFailed;
     private boolean ready;
 
-    BridgePanel(Context context, Runnable onPageReady, Predicate<KeyEvent> controllerKey) {
+    BridgePanel(Context context, Runnable restoreKeyboard, Predicate<KeyEvent> controllerKey) {
         super(context);
-        this.onPageReady = onPageReady;
+        this.restoreKeyboard = restoreKeyboard;
         this.controllerKey = controllerKey;
         setBackgroundColor(BACKGROUND);
         retry = new Button(context);
@@ -79,6 +79,13 @@ final class BridgePanel extends FrameLayout {
             public void checkAlternate() {
                 post(BridgePanel.this::checkAlternate);
             }
+
+            @JavascriptInterface
+            public void consoleInputChanged() {
+                post(() -> {
+                    if (panel == Panel.BOTTOM && started && ready) restoreKeyboard.run();
+                });
+            }
         }, "DuoConnection");
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -98,7 +105,7 @@ final class BridgePanel extends FrameLayout {
                         if (page == navigation && "true".equals(applied)) pendingDraft = null;
                     });
                 }
-                onPageReady.run();
+                restoreKeyboard.run();
             }
 
             @Override

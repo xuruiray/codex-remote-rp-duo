@@ -19,6 +19,14 @@
     <div id="workspace" aria-label="Mac 工作区"></div>
   </header>
   <main>
+    <aside id="follow-sidebar" aria-labelledby="follow-title" hidden>
+      <div class="follow-heading">
+        <strong id="follow-title">跟进 <span id="follow-count"></span></strong>
+        <button type="button" id="follow-attention" class="subtle" aria-pressed="false">待处理 0</button>
+      </div>
+      <p id="follow-error" role="status" hidden></p>
+      <ul id="follow-list" aria-label="跟进会话"></ul>
+    </aside>
     <section id="conversation" aria-label="对话">
       <div class="conversation-heading">
         <div class="conversation-context">
