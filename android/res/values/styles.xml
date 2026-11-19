@@ -1,0 +1,25 @@
+<resources>
+    <style name="Codex" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#17130E</item>
+        <item name="android:colorBackground">#17130E</item>
+        <item name="android:textColorPrimary">#FFF4DC</item>
+        <item name="android:textColorSecondary">#D3C3A5</item>
+        <item name="android:colorAccent">#FFDA3A</item>
+        <item name="android:colorControlActivated">#FFDA3A</item>
+        <item name="android:colorControlNormal">#D3C3A5</item>
+        <item name="android:colorControlHighlight">#33FFDA3A</item>
+        <item name="android:alertDialogTheme">@style/Codex.Dialog</item>
+    </style>
+
+    <style name="Codex.Dialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/codex_dialog_background</item>
+        <item name="android:colorBackground">#241D14</item>
+        <item name="android:colorBackgroundFloating">#241D14</item>
+        <item name="android:textColorPrimary">#FFF4DC</item>
+        <item name="android:textColorSecondary">#D3C3A5</item>
+        <item name="android:colorAccent">#FFDA3A</item>
+        <item name="android:colorControlActivated">#FFDA3A</item>
+        <item name="android:colorControlNormal">#D3C3A5</item>
+        <item name="android:colorControlHighlight">#33FFDA3A</item>
+    </style>
+</resources>

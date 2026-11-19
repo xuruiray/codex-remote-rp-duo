@@ -1,11 +1,11 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.xurui.duocodex" android:versionCode="24" android:versionName="0.1.23">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.xurui.duocodex" android:versionCode="25" android:versionName="0.1.24">
     <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application android:allowBackup="false" android:label="Codex"
         android:icon="@mipmap/chatgpt_launcher" android:roundIcon="@mipmap/chatgpt_launcher"
         android:enableOnBackInvokedCallback="true"
         android:networkSecurityConfig="@xml/network_security"
-        android:theme="@android:style/Theme.Material.NoActionBar" android:resizeableActivity="true">
+        android:theme="@style/Codex" android:resizeableActivity="true">
         <activity android:name=".MainActivity" android:exported="true"
             android:screenOrientation="landscape" android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
