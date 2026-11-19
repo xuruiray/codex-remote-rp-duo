@@ -118,6 +118,32 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
     }
   }
 
+  function renderQuestions(questions) {
+    const cards = document.createElement("div");
+    cards.className = "question-cards";
+    cards.setAttribute("aria-label", "Codex 的提问");
+    for (const question of questions) {
+      const card = document.createElement("section");
+      card.className = "question-card";
+      const title = document.createElement("p");
+      title.className = "question-title";
+      title.textContent = question.title;
+      card.append(title);
+      if (question.options?.length) {
+        const options = document.createElement("ol");
+        options.className = "question-options";
+        for (const option of question.options) {
+          const row = document.createElement("li");
+          row.textContent = option;
+          options.append(row);
+        }
+        card.append(options);
+      }
+      cards.append(card);
+    }
+    return cards;
+  }
+
   function renderEntry(entry) {
     if (entry.role === "trace" && !entry.text && !entry.output && !entry.diff) return null;
     const signature = JSON.stringify(entry);
@@ -174,8 +200,9 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
       const userText = isUser ? desktopUserText(entry.text) : null;
       const text = userText ? userText.text : entry.text;
       if (isUser) content.textContent = text;
-      else content.innerHTML = markdown.render(text || "…");
+      else content.innerHTML = markdown.render(text || (entry.questions?.length ? "" : "…"));
       const attachments = userText && renderUserAttachments(entry, userText);
+      const questions = !isUser && entry.questions?.length ? renderQuestions(entry.questions) : null;
       node.replaceChildren(label, ...[attachments, content].filter(Boolean));
       if (text && entry.complete !== false) {
         const toggle = document.createElement("button");
@@ -192,6 +219,7 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
         });
         node.append(toggle);
       }
+      if (questions) node.append(questions);
     }
     renderedEntries.set(entry.id, record);
     return node;

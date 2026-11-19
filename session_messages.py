@@ -42,7 +42,10 @@ def session_entry(item, complete=True):
         return {"role": "user", "id": key, "text": text or ("" if attachments else "附件"),
                 "attachments": attachments}
     if kind == "agentMessage":
-        return {"role": "assistant", "id": key, "text": item.get("text", ""), "complete": complete}
+        entry = {"role": "assistant", "id": key, "text": item.get("text", ""), "complete": complete}
+        if item.get("questions"):
+            entry["questions"] = item["questions"]
+        return entry
     if kind not in TRACE_ITEMS:
         return None
     flavor, label = TRACE_ITEMS[kind]
