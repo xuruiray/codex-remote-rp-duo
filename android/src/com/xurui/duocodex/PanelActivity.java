@@ -5,6 +5,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -35,15 +38,37 @@ abstract class PanelActivity extends Activity {
 
     final void showPanel(Panel role) {
         panel = role;
+        updateSystemBars();
         if (role == Panel.BOTTOM && keyboard == null) keyboard = new ConsoleKeyboard(this, content);
         if (role == Panel.BOTTOM) TEXT_INPUT.bind(this, this::restoreKeyboard);
         content.show(role);
         if (started && role != Panel.BOTTOM) CONTROLLER.bind(content);
     }
 
+    private void updateSystemBars() {
+        // Only the reading display is immersive; the console keeps its IME inset handling.
+        if (panel == Panel.BOTTOM || panel == null) return;
+        boolean immersive = panel == Panel.TOP;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(!immersive);
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            if (immersive) controller.hide(WindowInsets.Type.systemBars());
+            else controller.show(WindowInsets.Type.systemBars());
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(immersive
+                ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
+        updateSystemBars();
         started = true;
         content.start();
         if (panel != null && panel != Panel.BOTTOM) CONTROLLER.bind(content);
@@ -68,6 +93,7 @@ abstract class PanelActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);
+        if (focused) updateSystemBars();
         if (!focused && panel != Panel.TOP) CONTROLLER.reset();
         if (focused && keyboard != null) keyboard.focus();
     }
