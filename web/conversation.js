@@ -301,7 +301,7 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
       const empty = document.createElement("p");
       empty.className = "empty";
       empty.textContent = historyError ? "历史暂时无法加载，可以重试。" :
-        panel === "top" ? "在下屏打开会话，或开始新聊天。" : "输入消息后，回复会显示在这里。";
+        panel === "top" ? "从左侧打开会话，或开始新聊天。" : "输入消息后，回复会显示在这里。";
       nodes.push(empty);
     }
     if (nodes.length !== messages.children.length ||

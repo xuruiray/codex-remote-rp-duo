@@ -13,7 +13,6 @@ ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/changes-panel.js": ("changes-panel.js", "application/javascript; charset=utf-8"),
-    "/follow-sidebar.js": ("follow-sidebar.js", "application/javascript; charset=utf-8"),
     "/conversation.js": ("conversation.js", "application/javascript; charset=utf-8"),
     "/diff-view.js": ("diff-view.js", "application/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),

@@ -11,6 +11,7 @@ import android.window.OnBackInvokedDispatcher;
 abstract class PanelActivity extends Activity {
     private static final PanelExit EXIT = new PanelExit();
     private static final ControllerScroll CONTROLLER = new ControllerScroll();
+    private static final ConsoleTextInput TEXT_INPUT = new ConsoleTextInput();
     private BridgePanel content;
     private ConsoleKeyboard keyboard;
     private OnBackInvokedCallback backCallback;
@@ -28,13 +29,14 @@ abstract class PanelActivity extends Activity {
         }
         getWindow().setStatusBarColor(0xFF211B14);
         getWindow().setNavigationBarColor(0xFF17130E);
-        content = new BridgePanel(this, this::restoreKeyboard, CONTROLLER::key);
+        content = new BridgePanel(this, this::restoreKeyboard, CONTROLLER::key, TEXT_INPUT);
         setContentView(content);
     }
 
     final void showPanel(Panel role) {
         panel = role;
         if (role == Panel.BOTTOM && keyboard == null) keyboard = new ConsoleKeyboard(this, content);
+        if (role == Panel.BOTTOM) TEXT_INPUT.bind(this, this::restoreKeyboard);
         content.show(role);
         if (started && role != Panel.BOTTOM) CONTROLLER.bind(content);
     }
@@ -45,12 +47,16 @@ abstract class PanelActivity extends Activity {
         started = true;
         content.start();
         if (panel != null && panel != Panel.BOTTOM) CONTROLLER.bind(content);
-        if (keyboard != null) keyboard.start();
+        if (keyboard != null) {
+            TEXT_INPUT.bind(this, this::restoreKeyboard);
+            keyboard.start();
+        }
     }
 
     @Override
     protected void onStop() {
         started = false;
+        TEXT_INPUT.unbind(this);
         if (panel == Panel.BOTTOM) CONTROLLER.reset();
         CONTROLLER.unbind(content);
         EXIT.cancel(this);

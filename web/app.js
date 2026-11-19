@@ -1,6 +1,5 @@
 import {mountChanges} from "./changes-panel.js";
 import {mountConversation} from "./conversation.js";
-import {mountFollowSidebar} from "./follow-sidebar.js";
 
 const params = new URLSearchParams(location.hash.slice(1));
 const token = params.get("token") || "";
@@ -13,6 +12,7 @@ if (panel === "top") {
 }
 if (panel === "single") document.querySelector("#messages .empty").textContent = "输入任务后，Codex 的回复会显示在这里。";
 const find = (id) => document.getElementById(id);
+const errorLabel = () => find(panel === "top" ? "session-error" : "error");
 const activity = find("activity");
 const progress = find("progress");
 const prompt = find("prompt");
@@ -31,12 +31,13 @@ let activeThread = null;
 let activeName = null;
 let activeArchived = false;
 let listingArchived = false;
-let listSearch = "";
+let threadActivity = new Map();
 let cursor = null;
 let listLoading = false;
 let listRequest = 0;
-let view = "chat";
+let view = panel === "bottom" ? "chat" : "all";
 let sessionMenuTarget = null;
+let pendingTextEdit = null;
 let refreshSequence = 0;
 let restoredDraft = null;
 let hasSnapshot = false;
@@ -89,7 +90,7 @@ function buttons() {
   prompt.placeholder = activeArchived ? "恢复此会话后可以继续对话。" : "询问 Codex，或交给它一个任务…";
   find("stop").disabled = !online || !interruptible || requests;
   find("task-tab").disabled = !online || requests;
-  find("task-tab").setAttribute("aria-pressed", String(view === "chat" && !activeThread));
+  find("task-tab").setAttribute("aria-pressed", String(!activeThread));
   find("session-pin").disabled = !online || requests;
   const menuBusy = runningThreads.has(sessionMenuTarget?.thread.id);
   find("rename").disabled = !online || menuBusy || requests;
@@ -151,35 +152,14 @@ const conversation = panel === "bottom" ? null : mountConversation({
   },
 });
 
-async function loadFollowPins() {
-  const threads = [];
-  const visited = new Set();
-  let cursor = null;
-  do {
-    visited.add(cursor);
-    const result = await request("threads", {pinned: true, cursor});
-    threads.push(...result.threads);
-    cursor = result.next;
-  } while (cursor && !visited.has(cursor));
-  return threads;
-}
-
-const followSidebar = panel === "top" ? mountFollowSidebar({
-  root: find("follow-sidebar"),
-  loadPinned: loadFollowPins,
-  select: async (id) => {
-    await request("select", {id});
-    await refresh();
-  },
-}) : null;
-
 function render(state) {
   const reconnected = !online && state.connected;
   online = state.connected;
   busy = state.busy;
   interruptible = state.interruptible;
   activeTurn = state.turn_id;
-  runningThreads = new Set(state.running_thread_ids || []);
+  threadActivity = new Map((state.follow_activity || []).map(thread => [thread.id, thread]));
+  runningThreads = new Set(state.running_thread_ids || (state.follow_activity || []).filter(thread => thread.status === "running").map(thread => thread.id));
   const selectionChanged = activeThread !== state.thread_id;
   const externalSelection = hasSnapshot && selectionChanged && !requests;
   bindSubmissionThreads(state.submissions, state.thread_id);
@@ -194,7 +174,6 @@ function render(state) {
     find("error").hidden = true;
     if (view !== "chat") tab("chat");
   }
-  followSidebar?.update(state);
   renderModels(state.models, state.default_model);
   applyRestoredDraft();
   confirmSubmissions(state.submissions);
@@ -221,9 +200,11 @@ function render(state) {
   }
   for (const entry of find("session-list").querySelectorAll("button[data-thread-id]")) {
     entry.classList.toggle("selected", entry.dataset.threadId === activeThread);
-    entry.querySelector(".session-running").hidden = !runningThreads.has(entry.dataset.threadId);
+    entry.setAttribute("aria-current", String(entry.dataset.threadId === activeThread));
+    updateSessionStatus(entry);
   }
-  if (reconnected && view !== "chat") loadSessions();
+  if (panel !== "bottom" && (reconnected || (selectionChanged && activeThread &&
+      !find("session-list").querySelector('[data-thread-id="' + activeThread + '"]')))) loadSessions();
   buttons();
 }
 
@@ -235,7 +216,6 @@ async function refresh() {
   } catch (failure) {
     if (sequence !== refreshSequence) return;
     online = false;
-    followSidebar?.disconnected();
     updateConnection("connecting", "Mac 连接中断 · 正在重连");
     if (failure.name === "TypeError" || failure.name === "TimeoutError") {
       window.DuoConnection?.checkAlternate();
@@ -303,7 +283,7 @@ function confirmSubmissions(receipts) {
     const receipt = receipts?.[submitted.id];
     if (!receipt || receipt.status === "sending") return true;
     const thread = submitted.thread;
-    const error = find("error");
+    const error = errorLabel();
     if (receipt.status === "sent") {
       if (drafts.get(thread) === submitted.text) rememberDraft(thread, "");
       if (thread === activeThread && prompt.value === submitted.text) prompt.value = "";
@@ -321,7 +301,7 @@ async function change(path, data) {
   if (requests) return false;
   requests = true;
   buttons();
-  const error = find("error");
+  const error = errorLabel();
   error.hidden = true;
   try {
     await request(path, data);
@@ -337,9 +317,28 @@ async function change(path, data) {
   }
 }
 
+function editConsoleText(field, value) {
+  pendingTextEdit = {field, thread: sessionMenuTarget?.thread.id};
+  window.DuoConnection.editText(field, value);
+}
+
+function acceptConsoleText(field, value) {
+  const pending = pendingTextEdit;
+  pendingTextEdit = null;
+  if (!pending || pending.field !== field) return;
+  if (value === null) {
+    if (field === "session-name") closeSessionMenu();
+    return;
+  }
+  if (field === "session-name" && pending.thread !== sessionMenuTarget?.thread.id) return;
+  find("session-name").value = value;
+  find("session-rename").requestSubmit();
+}
+
+
 function focusEntry() {
   if (panel !== "bottom") return false;
-  const field = find("sessions").hidden ? prompt : find("session-search");
+  const field = prompt;
   if (field.disabled) return false;
   field.focus({preventScroll: true});
   return document.activeElement === field;
@@ -367,7 +366,7 @@ find("composer").addEventListener("submit", async (event) => {
 });
 async function openComposer(action, data) {
   if (!(await change(action, data))) return;
-  tab("chat");
+  if (panel === "bottom") tab("chat");
   buttons();
 }
 
@@ -380,14 +379,14 @@ function tab(mode) {
     listLoading = false;
     cursor = null;
     listingArchived = false;
-    find("archived").textContent = "归档";
+    find("archived").textContent = "归档会话";
   }
   view = mode;
-  const showSessions = view !== "chat";
-  find("composer").hidden = showSessions;
+  const showSessions = panel !== "bottom";
+  find("composer").hidden = false;
   find("sessions").hidden = !showSessions;
   closeSessionMenu();
-  find("task-tab").setAttribute("aria-pressed", String(!showSessions && !activeThread));
+  find("task-tab").setAttribute("aria-pressed", String(!activeThread));
   find("sessions-tab").setAttribute("aria-pressed", String(view === "all"));
   find("pinned-tab").setAttribute("aria-pressed", String(view === "pinned"));
   focusEntry();
@@ -398,13 +397,12 @@ async function loadSessions(append = false) {
   if (append && (listLoading || !cursor)) return;
   const ticket = ++listRequest;
   const archived = listingArchived;
-  if (!append) listSearch = find("session-search").value.trim();
   closeSessionMenu();
   listLoading = true;
   find("more").disabled = true;
   const list = find("session-list");
   const footer = find("session-more");
-  const error = find("error");
+  const error = errorLabel();
   error.hidden = true;
   if (!append) {
     const empty = find("session-empty");
@@ -415,7 +413,7 @@ async function loadSessions(append = false) {
   }
   try {
     const result = await request("threads", {
-      archived, search: listSearch,
+      archived,
       cursor: append ? cursor : null, pinned: view === "pinned",
     });
     if (ticket !== listRequest) return;
@@ -444,6 +442,19 @@ function updateListFooter() {
   find("session-more").hidden = !cursor;
 }
 
+function updateSessionStatus(button) {
+  const id = button.dataset.threadId;
+  const activity = threadActivity.get(id);
+  const running = runningThreads.has(id);
+  const status = button.querySelector(".session-running");
+  status.hidden = !running && !activity?.unread;
+  status.textContent = running ? "运行中" : "未读";
+  status.classList.toggle("unread", Boolean(activity?.unread && !running));
+  const meta = button.querySelector(".session-meta");
+  meta.textContent = activity?.summary || (running ? "运行中" : "");
+  meta.hidden = !meta.textContent;
+}
+
 function makeSessionRow(thread, archived) {
   const row = document.createElement("li");
   row.className = "session-row";
@@ -452,12 +463,15 @@ function makeSessionRow(thread, archived) {
   button.type = "button";
   button.dataset.threadId = thread.id;
   button.classList.toggle("selected", thread.id === activeThread);
+  button.setAttribute("aria-current", String(thread.id === activeThread));
   const heading = document.createElement("span");
   const title = document.createElement("span");
   title.className = "session-title";
   const pinned = document.createElement("span");
   pinned.className = "session-pinned";
-  pinned.textContent = "已置顶";
+  pinned.textContent = "★";
+  pinned.setAttribute("aria-label", "已置顶");
+  pinned.title = "已置顶";
   const status = document.createElement("span");
   status.className = "session-running";
   status.textContent = "运行中";
@@ -465,8 +479,8 @@ function makeSessionRow(thread, archived) {
   heading.append(title, pinned, status);
   const meta = document.createElement("span");
   meta.className = "session-meta";
-  meta.textContent = thread.workspace + " · " + new Date(thread.updated_at * 1000).toLocaleDateString("zh-CN");
   button.append(heading, meta);
+  updateSessionStatus(button);
   button.addEventListener("click", () => openComposer("select", {id: thread.id, archived}));
   const trigger = document.createElement("button");
   trigger.type = "button";
@@ -476,6 +490,7 @@ function makeSessionRow(thread, archived) {
   trigger.setAttribute("aria-expanded", "false");
   const updateTitle = () => {
     title.textContent = thread.title;
+    button.title = thread.title;
     pinned.hidden = !thread.pinned;
     trigger.setAttribute("aria-label", thread.title + "的会话操作");
   };
@@ -553,16 +568,10 @@ find("pinned-tab").addEventListener("click", () => {
   tab("pinned");
   loadSessions();
 });
-find("search-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (panel === "bottom") focusEntry();
-  else document.activeElement.blur();
-  loadSessions();
-});
 find("archived").addEventListener("click", () => {
   if (listLoading) return;
   listingArchived = !listingArchived;
-  find("archived").textContent = listingArchived ? "查看未归档" : "归档";
+  find("archived").textContent = listingArchived ? "返回会话" : "归档会话";
   loadSessions();
 });
 find("more").addEventListener("click", () => {
@@ -598,8 +607,14 @@ find("rename").addEventListener("click", () => {
   find("session-menu-actions").hidden = true;
   find("session-rename").hidden = false;
   positionSessionMenu();
-  name.focus({preventScroll: true});
-  name.select();
+  if (panel === "top" && window.DuoConnection?.editText) {
+    name.readOnly = true;
+    find("session-menu").hidden = true;
+    editConsoleText("session-name", name.value);
+  } else {
+    name.focus({preventScroll: true});
+    name.select();
+  }
 });
 find("archive").addEventListener("click", event => {
   if (!sessionMenuTarget) return;
@@ -646,6 +661,7 @@ prompt.addEventListener("keydown", (event) => {
     find("composer").requestSubmit();
   }
 });
+tab(view);
 buttons();
 function scrollReading(pixels) {
   if (panel === "bottom") return;
@@ -655,7 +671,7 @@ function scrollReading(pixels) {
 }
 
 window.DuoPanel = Object.freeze({
-  focusComposer: focusEntry, captureDraft: connectionDraft, restoreDraft: restoreConnectionDraft, scrollReading,
+  acceptConsoleText, focusComposer: focusEntry, captureDraft: connectionDraft, restoreDraft: restoreConnectionDraft, scrollReading,
 });
 // The previous APK calls these names directly when its WebView loads the updated bridge.
 Object.assign(window, {focusEntry, connectionDraft, restoreConnectionDraft});

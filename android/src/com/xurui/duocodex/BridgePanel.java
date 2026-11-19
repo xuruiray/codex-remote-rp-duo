@@ -33,6 +33,7 @@ final class BridgePanel extends FrameLayout {
 
     private final Button retry;
     private final Runnable restoreKeyboard;
+    private final ConsoleTextInput consoleTextInput;
     private final Predicate<KeyEvent> controllerKey;
     private final ExecutorService probes = Executors.newSingleThreadExecutor();
     private final Runnable reconnect = this::connect;
@@ -48,9 +49,10 @@ final class BridgePanel extends FrameLayout {
     private boolean pageFailed;
     private boolean ready;
 
-    BridgePanel(Context context, Runnable restoreKeyboard, Predicate<KeyEvent> controllerKey) {
+    BridgePanel(Context context, Runnable restoreKeyboard, Predicate<KeyEvent> controllerKey, ConsoleTextInput consoleTextInput) {
         super(context);
         this.restoreKeyboard = restoreKeyboard;
+        this.consoleTextInput = consoleTextInput;
         this.controllerKey = controllerKey;
         setBackgroundColor(BACKGROUND);
         retry = new Button(context);
@@ -78,6 +80,21 @@ final class BridgePanel extends FrameLayout {
             @JavascriptInterface
             public void checkAlternate() {
                 post(BridgePanel.this::checkAlternate);
+            }
+
+            @JavascriptInterface
+            public void editText(String field, String value) {
+                if (!field.equals("session-name")) return;
+                post(() -> {
+                    if (panel != Panel.TOP || !started || !ready) return;
+                    long page = navigation;
+                    consoleTextInput.show(value, answer -> {
+                        if (page != navigation || !started || !ready) return;
+                        String result = answer == null ? "null" : org.json.JSONObject.quote(answer);
+                        web.evaluateJavascript("window.DuoPanel?.acceptConsoleText("
+                            + org.json.JSONObject.quote(field) + "," + result + ")", null);
+                    });
+                });
             }
 
             @JavascriptInterface

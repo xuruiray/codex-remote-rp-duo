@@ -19,13 +19,42 @@
     <div id="workspace" aria-label="Mac 工作区"></div>
   </header>
   <main>
-    <aside id="follow-sidebar" aria-labelledby="follow-title" hidden>
-      <div class="follow-heading">
-        <strong id="follow-title">跟进 <span id="follow-count"></span></strong>
-        <button type="button" id="follow-attention" class="subtle" aria-pressed="false">待处理 0</button>
-      </div>
-      <p id="follow-error" role="status" hidden></p>
-      <ul id="follow-list" aria-label="跟进会话"></ul>
+    <aside id="session-sidebar" aria-label="会话管理">
+      <nav class="tabs" aria-label="会话导航">
+        <button id="task-tab" type="button" aria-pressed="true">新聊天</button>
+        <button id="pinned-tab" type="button" aria-pressed="false">置顶</button>
+        <button id="sessions-tab" type="button" aria-pressed="false">全部会话</button>
+      </nav>
+      <section id="sessions" aria-label="会话列表">
+        <ul id="session-list">
+          <li id="session-empty" class="empty" hidden>暂无会话。</li>
+          <li id="session-more" hidden><button id="more" type="button" class="subtle">加载更多</button></li>
+        </ul>
+        <button type="button" id="archived" class="subtle">归档会话</button>
+        <div id="session-menu" class="session-menu" role="group" aria-label="会话操作" hidden>
+          <div id="session-menu-actions">
+            <button type="button" id="session-pin" class="subtle">置顶</button>
+            <button type="button" id="rename" class="subtle">重命名</button>
+            <button type="button" id="archive" class="subtle">归档</button>
+          </div>
+          <div id="session-menu-confirmation" hidden>
+            <p id="session-confirmation-label"></p>
+            <div class="buttons">
+              <button type="button" id="session-cancel" class="subtle">取消</button>
+              <button type="button" id="session-confirm">确认归档</button>
+            </div>
+          </div>
+          <form id="session-rename" hidden>
+            <label for="session-name">会话的新名称</label>
+            <input id="session-name" type="text" maxlength="120" required>
+            <div class="buttons">
+              <button type="button" id="cancel-rename" class="subtle">取消</button>
+              <button type="submit">确定</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      <p id="session-error" role="alert" hidden></p>
     </aside>
     <section id="conversation" aria-label="对话">
       <div class="conversation-heading">
@@ -55,11 +84,6 @@
       <div id="change-detail" aria-live="polite"></div>
     </aside>
     <section id="controls" aria-label="任务控制">
-      <nav class="tabs" aria-label="下屏工作区">
-        <button id="task-tab" type="button" aria-pressed="true">新聊天</button>
-        <button id="pinned-tab" type="button" aria-pressed="false">置顶</button>
-        <button id="sessions-tab" type="button" aria-pressed="false">全部会话</button>
-      </nav>
       <form id="composer">
         <div class="composer-box">
           <textarea id="prompt" aria-label="给 Codex 发消息" maxlength="8000" placeholder="询问 Codex，或交给它一个任务…" spellcheck="false" enterkeyhint="send"></textarea>
@@ -73,39 +97,6 @@
           </div>
         </div>
       </form>
-      <section id="sessions" aria-label="会话列表" hidden>
-        <form id="search-form">
-          <input id="session-search" type="search" aria-label="搜索会话" placeholder="搜索会话" maxlength="150">
-          <button type="submit" class="subtle">搜索</button>
-          <button type="button" id="archived" class="subtle">归档</button>
-        </form>
-        <ul id="session-list">
-          <li id="session-empty" class="empty" hidden>没有匹配的会话。</li>
-          <li id="session-more" hidden><button id="more" type="button" class="subtle">加载更多</button></li>
-        </ul>
-        <div id="session-menu" class="session-menu" role="group" aria-label="会话操作" hidden>
-          <div id="session-menu-actions">
-            <button type="button" id="session-pin" class="subtle">置顶</button>
-            <button type="button" id="rename" class="subtle">重命名</button>
-            <button type="button" id="archive" class="subtle">归档</button>
-          </div>
-          <div id="session-menu-confirmation" hidden>
-            <p id="session-confirmation-label"></p>
-            <div class="buttons">
-              <button type="button" id="session-cancel" class="subtle">取消</button>
-              <button type="button" id="session-confirm">确认归档</button>
-            </div>
-          </div>
-          <form id="session-rename" hidden>
-            <label for="session-name">会话的新名称</label>
-            <input id="session-name" type="text" maxlength="120" required>
-            <div class="buttons">
-              <button type="button" id="cancel-rename" class="subtle">取消</button>
-              <button type="submit">确定</button>
-            </div>
-          </form>
-        </div>
-      </section>
       <p id="error" role="alert" hidden></p>
     </section>
   </main>

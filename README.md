@@ -4,10 +4,10 @@ Retroid Pocket Duo 的双屏 Codex 遥控客户端。掌机通过 USB 或同一�
 
 ## 功能
 
-- 上屏常驻「跟进」侧栏，可在置顶、运行中和完成未读的会话之间切换，并筛出待处理会话。
+- 上屏左侧用一行入口管理新聊天、置顶和全部会话，支持逐条操作菜单。下屏专注输入与常驻键盘。
 - 上屏查看流式回复、任务进度和折叠命令，按文件查看 diff。方向键和摇杆可滚动上屏。
 - 下屏常驻键盘，可选择模型与推理强度，发送、停止和保留草稿。
-- 搜索、续聊、置顶、重命名、归档及恢复 Mac 上的会话。
+- 续聊、置顶、重命名、归档及恢复 Mac 上的会话。
 - 多个会话可同时运行，切换会话时原任务继续，停止只作用于当前会话。
 - USB 初次配对，支持 TLS、Wi-Fi 重连和双屏／单屏切换。
 
@@ -15,9 +15,9 @@ Retroid Pocket Duo 的双屏 Codex 遥控客户端。掌机通过 USB 或同一�
 
 截图使用虚构会话和示例文件。
 
-| 双屏对话与变更 | 下屏会话管理 |
+| 上屏会话与变更 | 下屏输入与键盘 |
 | --- | --- |
-| ![上屏显示示例对话及文件 diff，下屏显示输入框](docs/screenshots/dual-screen.png) | ![下屏展示示例会话列表与逐条操作菜单](docs/screenshots/sessions.png) |
+| ![上屏显示一行导航、示例会话列表及文件 diff](docs/screenshots/dual-screen.png) | ![下屏显示输入框、模型与推理强度和常驻键盘](docs/screenshots/sessions.png) |
 
 ## 从源码运行
 
@@ -32,7 +32,7 @@ adb install -r DuoCodex.apk
 
 首次配对后，同一局域网内可以拔掉 USB。用 `./USB.command --serve` 启动已配对的 Mac 服务，用 `./USB.command --stop` 停止。可用 `DUO_LAN_IP` 指定 Mac 的局域网 IPv4，或用 `DUO_USB_ONLY=1 ./USB.command` 只用 USB。新对话默认在 `.duo/workspace/`，也可在启动服务时传入工作目录。
 
-上屏侧栏由 Mac 服务提供，升级 APK 后同时更新并重启 Mac 服务。
+界面由 Mac 服务提供，升级 APK 后同时更新并重启 Mac 服务。
 
 首次构建会在本机 `.duo/` 生成连接和签名材料。保留本机签名文件，后续才能覆盖安装自己的 APK。
 
