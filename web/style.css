@@ -19,7 +19,8 @@
   color: var(--text);
 }
 * { box-sizing: border-box; }
-body { margin: 0; height: 100dvh; display: flex; flex-direction: column; }
+html { overflow: hidden; }
+body { margin: 0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 header { display: flex; align-items: center; gap: 12px; padding: 6px 18px; border-bottom: 1px solid var(--border); background: var(--header); min-height: 38px; }
 .brand { display: flex; align-items: center; gap: 6px; font-weight: 750; white-space: nowrap; }
 .brand img { display: block; flex-shrink: 0; }
@@ -44,7 +45,7 @@ main { display: flex; min-height: 0; flex: 1; width: min(100%, 1050px); margin: 
 #changes-notice:not(:empty) { width: max-content; max-width: min(220px, calc(100vw - 36px)); padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: .85rem; box-shadow: 0 4px 12px #0006; }
 .section-title, label { font-weight: 650; }
 #messages, #activity { overflow: auto; min-height: 0; margin: 0; }
-#messages { flex: 1; }
+#messages { flex: 1; position: relative; overscroll-behavior: contain; }
 #messages:has(> .empty) { display: grid; place-items: center; }
 .message { margin: 0 0 9px; overflow-wrap: anywhere; line-height: 1.5; }
 .user { width: fit-content; max-width: 85%; margin-left: auto; padding: 6px 11px; background: var(--user-surface); border: 1px solid var(--border); border-radius: 10px; }
@@ -214,7 +215,7 @@ body[data-panel=bottom] #changes { display: none; }
 #change-files button small { color: var(--muted); white-space: nowrap; }
 #change-files .added { color: #c4e2a1; }
 #change-files .removed { color: #ffb0a2; }
-#change-detail { min-height: 0; flex: 1; overflow: auto; border-top: 1px solid var(--border); padding-top: 6px; }
+#change-detail { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); padding-top: 6px; }
 .change-path { color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
 #change-detail .diff { margin: 7px 0 0; font-size: .81rem; line-height: 1.45; }
 @media (max-width: 550px) {
