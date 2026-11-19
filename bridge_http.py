@@ -34,8 +34,11 @@ def make_handler(codex, token):
             self.send_header("Content-Security-Policy",
                              "default-src 'self'; img-src 'self' blob:; frame-src 'none'; "
                              "object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
         def reply(self, status, value):
             self.write_bytes(status, json.dumps(value, ensure_ascii=False).encode(), "application/json")

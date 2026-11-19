@@ -30,6 +30,7 @@ class Chat:
     activity: list = field(default_factory=list)
     history_cursor: str | None = None
     history_error: bool = False
+    history_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     outcome: str | None = None
     unread: bool = False
     changes: TurnChanges = field(init=False)
@@ -90,7 +91,7 @@ class Codex:
 
     def _initialize(self):
         self._rpc.call("initialize", {
-            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.19"},
+            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.20"},
         })
         self._rpc.notify("initialized")
         models = []
@@ -478,11 +479,15 @@ class Codex:
                             self.save_selection()
 
     def older_history(self, before, thread_id):
-        with self.action:
+        with self.lock:
+            chat = self.selected
+            if thread_id != chat.id:
+                raise ValueError("会话已切换，请重新打开历史")
+        with chat.history_lock:
+            cursors = set()
             while True:
                 with self.lock:
-                    chat = self.selected
-                    if thread_id != chat.id:
+                    if self.selected is not chat:
                         raise ValueError("会话已切换，请重新打开历史")
                     end = next((index for index, message in enumerate(chat.messages)
                                 if message["id"] == before), None)
@@ -493,12 +498,24 @@ class Codex:
                     cursor = chat.history_cursor
                     if end >= PAGE_SIZE or not cursor:
                         return chat.history_slice(end)
+                if cursor in cursors:
+                    raise RuntimeError("历史记录分页位置未前进，请重试")
+                cursors.add(cursor)
                 page = self.turn_page(thread_id, cursor)
                 with self.lock:
-                    chat.messages[:0] = self.turn_entries(page)
+                    if self.selected is not chat:
+                        raise ValueError("会话已切换，请重新打开历史")
+                    if page.get("nextCursor") == cursor:
+                        raise RuntimeError("历史记录分页位置未前进，请重试")
+                    known = {message["id"] for message in chat.messages}
+                    entries = []
+                    for message in self.turn_entries(page):
+                        if message["id"] not in known:
+                            entries.append(message)
+                            known.add(message["id"])
+                    chat.messages[:0] = entries
                     chat.history_cursor = page.get("nextCursor")
-                    if chat.history_cursor == cursor:
-                        chat.history_cursor = None
+
 
     def get_diff(self, thread_id, turn_id, path):
         with self.lock:

@@ -18,7 +18,7 @@ function desktopUserText(text) {
 
 const MAX_COMMAND_GROUP = 32;
 
-export function mountConversation({messages, older, panel, loadAttachment, loadOlder, retryHistory}) {
+export function mountConversation({messages, older, historyStatus, panel, loadAttachment, loadOlder, retryHistory}) {
   let thread = null;
   let archived = false;
   let latestEntries = [];
@@ -27,6 +27,11 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
   let historyError = false;
   let loadedOlder = false;
   let historyRequest = 0;
+  let historyController = null;
+  let loadingHistory = false;
+  let historyFailure = false;
+  let retryingHistory = false;
+  const historyAnchors = new Set();
   const renderedEntries = new Map();
   let renderedCommandGroups = new Map();
 
@@ -324,6 +329,12 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
     historyError = Boolean(state.history_error);
     if (selectionChanged) {
       ++historyRequest;
+      historyController?.abort();
+      historyController = null;
+      loadingHistory = false;
+      historyFailure = false;
+      retryingHistory = false;
+      historyAnchors.clear();
       older.disabled = false;
       olderEntries = [];
       loadedOlder = false;
@@ -334,9 +345,8 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
       const newest = new Set(state.messages.map(entry => entry.id));
       const known = new Set(olderEntries.map(entry => entry.id));
       const firstRetained = latestEntries.findIndex(entry => newest.has(entry.id));
-      if (firstRetained > 0) {
-        olderEntries.push(...latestEntries.slice(0, firstRetained).filter(entry => !known.has(entry.id)));
-      }
+      const moved = firstRetained < 0 ? latestEntries.length : firstRetained;
+      olderEntries.push(...latestEntries.slice(0, moved).filter(entry => !known.has(entry.id)));
       olderEntries = olderEntries.filter(entry => !newest.has(entry.id));
     } else {
       historyBefore = state.history_before;
@@ -345,31 +355,76 @@ export function mountConversation({messages, older, panel, loadAttachment, loadO
       latestEntries = state.messages;
       drawMessages(selectionChanged ? "latest" : "keep");
     }
-    older.hidden = !historyBefore && !historyError;
-    if (selectionChanged || errorChanged) older.textContent = historyError ? "重试加载历史" : "更早的记录";
+    renderHistoryStatus();
+    loadEarlierHistory();
   }
 
-  older.addEventListener("click", async () => {
-    const ticket = ++historyRequest;
-    older.disabled = true;
+  function renderHistoryStatus() {
+    older.hidden = !historyError && !historyFailure;
+    older.disabled = loadingHistory || retryingHistory;
+    if (historyStatus) {
+      historyStatus.hidden = !loadingHistory;
+      historyStatus.textContent = "正在加载更早记录…";
+    }
+  }
+
+  async function loadEarlierHistory(force = false) {
+    if (loadingHistory || historyError || historyFailure || !historyBefore || (!force && messages.scrollTop > 80)) return;
+    const ticket = historyRequest;
+    const selected = thread;
+    const controller = new AbortController();
+    historyController = controller;
+    loadingHistory = true;
+    loadedOlder = true;
+    renderHistoryStatus();
     try {
-      if (historyError) {
-        await retryHistory(thread, archived);
-        return;
-      }
-      const page = await loadOlder(thread, historyBefore);
+      const before = historyBefore;
+      if (historyAnchors.has(before)) throw new Error("历史记录分页位置未前进");
+      const page = await loadOlder(selected, before, controller.signal);
       if (ticket !== historyRequest) return;
-      loadedOlder = true;
+      historyAnchors.add(before);
       const known = new Set([...olderEntries, ...latestEntries].map(entry => entry.id));
-      olderEntries.unshift(...page.messages.filter(entry => !known.has(entry.id)));
+      const incoming = page.messages.filter(entry => {
+        if (known.has(entry.id)) return false;
+        known.add(entry.id);
+        return true;
+      });
+      olderEntries.unshift(...incoming);
       historyBefore = page.history_before;
-      older.textContent = "更早的记录";
-      older.hidden = !historyBefore;
       drawMessages("older");
     } catch (_) {
-      if (ticket === historyRequest) older.textContent = "重试加载历史";
+      if (ticket === historyRequest) historyFailure = true;
     } finally {
-      if (ticket === historyRequest) older.disabled = false;
+      if (ticket === historyRequest) {
+        loadingHistory = false;
+        historyController = null;
+        renderHistoryStatus();
+        requestAnimationFrame(() => loadEarlierHistory());
+      }
+    }
+  }
+
+  messages.addEventListener("scroll", () => loadEarlierHistory());
+
+  older.addEventListener("click", async () => {
+    if (loadingHistory || retryingHistory) return;
+    const ticket = historyRequest;
+    retryingHistory = true;
+    older.disabled = true;
+    historyFailure = false;
+    historyAnchors.clear();
+    try {
+      if (historyError) await retryHistory(thread, archived);
+      if (ticket === historyRequest) {
+        loadEarlierHistory(true);
+      }
+    } catch (_) {
+      if (ticket === historyRequest) historyFailure = true;
+    } finally {
+      if (ticket === historyRequest) {
+        retryingHistory = false;
+        renderHistoryStatus();
+      }
     }
   });
 

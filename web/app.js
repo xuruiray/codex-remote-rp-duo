@@ -119,10 +119,11 @@ function renderModels(models, defaultModel) {
   renderEfforts();
 }
 
-async function request(path, data, image = false) {
+async function request(path, data, image = false, signal = null) {
   const options = {
     headers: {Authorization: "Bearer " + token},
-    signal: AbortSignal.timeout(data === undefined ? 6000 : 30000)
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(data === undefined ? 6000 : 30000)]) :
+      AbortSignal.timeout(data === undefined ? 6000 : 30000)
   };
   if (data !== undefined) {
     options.method = "POST";
@@ -143,9 +144,9 @@ const changes = panel === "bottom" ? null : mountChanges({
   loadDiff: (thread, turn, path) => request("file-diff", {thread_id: thread, turn_id: turn, path}),
 });
 const conversation = panel === "bottom" ? null : mountConversation({
-  panel, messages: find("messages"), older: find("older"),
+  panel, messages: find("messages"), older: find("older"), historyStatus: find("history-status"),
   loadAttachment: (thread, message, index) => request("attachment", {thread_id: thread, message_id: message, index}, true),
-  loadOlder: (thread, before) => request("history", {thread_id: thread, before}),
+  loadOlder: (thread, before, signal) => request("history", {thread_id: thread, before}, false, signal),
   retryHistory: async (id, archived) => {
     await request("select", {id, archived, retry_history: true});
     await refresh();

@@ -269,3 +269,5 @@ body[data-panel=bottom] #composer { max-height: none; }
 .question-options { margin: 9px 0 0; padding-left: 1.5em; color: var(--text); }
 .question-options li { padding: 3px 0 3px 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .question-options li::marker { color: var(--muted); }
+
+#history-status { flex: none; color: var(--muted); font-size: .78rem; white-space: nowrap; }
