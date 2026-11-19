@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.res.ColorStateList;
 import android.view.inputmethod.InputMethodManager;
 import android.text.InputFilter;
+import android.text.InputType;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -28,7 +29,7 @@ final class ConsoleTextInput {
         restoreKeyboard = null;
     }
 
-    void show(String value, Consumer<String> reply) {
+    void show(String value, boolean secret, Consumer<String> reply) {
         if (console == null || console.isFinishing()) {
             reply.accept(null);
             return;
@@ -37,13 +38,14 @@ final class ConsoleTextInput {
         EditText input = new EditText(console);
         input.setSingleLine(true);
         input.setBackgroundTintList(ColorStateList.valueOf(0xFFFFDA3A));
-        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(secret ? 8000 : 120)});
+        if (secret) input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         input.setText(value);
         input.setSelectAllOnFocus(true);
         input.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI
             | EditorInfo.IME_FLAG_NO_FULLSCREEN);
         AlertDialog editor = new AlertDialog.Builder(console)
-            .setTitle("重命名会话")
+            .setTitle(secret ? "填写保密回答" : "重命名会话")
             .setView(input)
             .setPositiveButton("确定", (ignored, which) -> reply.accept(input.getText().toString()))
             .setNegativeButton("取消", (ignored, which) -> reply.accept(null))

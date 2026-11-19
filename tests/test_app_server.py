@@ -54,6 +54,41 @@ class AppServerTests(unittest.TestCase):
         self.assertTrue(disconnected.wait(timeout=2))
         self.assertFalse(server.connected)
 
+    def test_deferred_question_response_keeps_rpc_reader_available(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        path = Path(directory)
+        binary = path / "fake-codex"
+        binary.write_text('''#!/usr/bin/env python3
+import json,sys
+for line in sys.stdin:
+ request=json.loads(line)
+ if "method" not in request:
+  print(json.dumps({"method":"answered","params":request}),flush=True)
+  continue
+ if request["method"]=="ask":
+  print(json.dumps({"id":"question-7","method":"item/tool/requestUserInput","params":{"question":"pick"}}),flush=True)
+ print(json.dumps({"id":request["id"],"result":{}}),flush=True)
+''')
+        binary.chmod(0o700)
+        arrived, answered = threading.Event(), threading.Event()
+        received = []
+        def on_request(ident, params):
+            received.append((ident, params))
+            arrived.set()
+        def notification(method, params):
+            if method == "answered":
+                received.append(params)
+                answered.set()
+        server = AppServer(str(binary), path, notification, lambda: None, on_request)
+        self.addCleanup(server.close)
+        server.call("ask", {})
+        self.assertTrue(arrived.wait(1))
+        self.assertEqual(received[0], ("question-7", {"question": "pick"}))
+        self.assertEqual(server.call("ping-while-waiting", {}), {})
+        server.reply("question-7", {"answers": {"size": {"answers": ["upper"]}}})
+        self.assertTrue(answered.wait(1))
+        self.assertEqual(received[1], {"id": "question-7", "result": {"answers": {"size": {"answers": ["upper"]}}}})
+
 
 if __name__ == "__main__":
     unittest.main()

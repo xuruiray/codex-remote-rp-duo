@@ -11,11 +11,16 @@ from codex_session import Codex
 class FakeAppServer:
     connected = True
 
-    def __init__(self, _executable, _workspace, notification, _disconnect):
+    def __init__(self, _executable, _workspace, notification, _disconnect, on_request=None):
         self.notification = notification
         self.ids = itertools.count(1)
         self.started = Queue()
         self.interrupts = []
+        self.request = on_request
+        self.replies = []
+
+    def reply(self, ident, result):
+        self.replies.append((ident, result))
 
     def notify(self, _method):
         pass

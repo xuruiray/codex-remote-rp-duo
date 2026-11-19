@@ -27,6 +27,8 @@ class HistoryTests(unittest.TestCase):
         self.codex.action = threading.Lock()
         self.codex.workspace = Path.cwd()
         self.codex.session_file = None
+        self.codex.selection_request = 0
+        self.codex.opening_thread = None
         self.chat = Chat(Path.cwd(), id="history", messages=[entry("current")], history_cursor="page-1")
         self.codex.selected = self.chat
         self.codex.chats = OrderedDict([(self.chat.id, self.chat)])

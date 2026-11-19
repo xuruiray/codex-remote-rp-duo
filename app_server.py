@@ -20,7 +20,7 @@ class RpcError(RuntimeError):
 
 
 class AppServer:
-    def __init__(self, executable, workspace, on_notification, on_disconnect):
+    def __init__(self, executable, workspace, on_notification, on_disconnect, on_request=None):
         self._ids = itertools.count(1)
         self._pending = {}
         self._lock = threading.Lock()
@@ -28,6 +28,7 @@ class AppServer:
         self._running = True
         self._on_notification = on_notification
         self._on_disconnect = on_disconnect
+        self._on_request = on_request
         self._process = subprocess.Popen(
             [executable, "app-server", "--disable", "apps", "--disable", "plugins",
              "--disable", "hooks", *_disabled_servers()],
@@ -66,6 +67,9 @@ class AppServer:
 
     def notify(self, method):
         self._send({"method": method})
+
+    def reply(self, ident, result):
+        self._send({"id": ident, "result": result})
 
     def close(self):
         try:
@@ -109,6 +113,12 @@ class AppServer:
 
     def _dispatch(self, value):
         if "id" in value and "method" in value:
+            if value["method"] == "item/tool/requestUserInput" and self._on_request is not None:
+                try:
+                    self._on_request(value["id"], value["params"])
+                except (ValueError, KeyError, TypeError) as error:
+                    self._send({"id": value["id"], "error": {"code": -32602, "message": str(error)}})
+                return
             reply = {"decision": "decline"} if value["method"].endswith("/requestApproval") else None
             if reply is not None:
                 self._send({"id": value["id"], "result": reply})

@@ -1,5 +1,6 @@
 import {mountChanges} from "./changes-panel.js";
 import {mountConversation} from "./conversation.js";
+import {mountQuestions} from "./questions.js";
 
 const params = new URLSearchParams(location.hash.slice(1));
 const token = params.get("token") || "";
@@ -41,6 +42,12 @@ let pendingTextEdit = null;
 let refreshSequence = 0;
 let restoredDraft = null;
 let hasSnapshot = false;
+let activeQuestion = null;
+let currentDraftKey = null;
+let openingThread = null;
+let navigationPending = false;
+let navigationRequest = 0;
+let navigationController = null;
 const draftStorageKey = "duo-codex-composer-drafts";
 const maxDrafts = 20;
 const savedComposer = readComposer();
@@ -83,13 +90,21 @@ function rememberDraft(thread, text) {
 }
 
 function buttons() {
-  find("send").hidden = busy;
+  const question = activeQuestion?.questions.find(q => q.id === activeQuestion.focus);
+  const answering = Boolean(question);
+  const navigating = navigationPending || openingThread !== null;
+  find("send").hidden = busy && !answering;
   find("stop").hidden = !busy;
-  find("send").disabled = !online || busy || requests || activeArchived || !prompt.value.trim();
+  find("send").textContent = answering ? "回答" : "发送";
+  const validAnswer = question?.secret ? activeQuestion.ready : prompt.value.trim() &&
+    (!answering || question.other || question.options.some(option => option.label === prompt.value.trim()));
+  find("send").disabled = !online || navigating || requests || activeArchived ||
+    (answering ? activeQuestion.status !== "pending" || !validAnswer || (busy && activeQuestion.kind === "message") : busy || !prompt.value.trim());
   prompt.disabled = activeArchived;
-  prompt.placeholder = activeArchived ? "恢复此会话后可以继续对话。" : "询问 Codex，或交给它一个任务…";
+  prompt.placeholder = activeArchived ? "恢复此会话后可以继续对话。" : question ?
+    question.secret ? "在上屏点击填写保密回答。" : question.other ? question.title : "请在上屏选择答案，再提交回答。" : "询问 Codex，或交给它一个任务…";
   find("stop").disabled = !online || !interruptible || requests;
-  find("task-tab").disabled = !online || requests;
+  find("task-tab").disabled = !online;
   find("task-tab").setAttribute("aria-pressed", String(!activeThread));
   find("session-pin").disabled = !online || requests;
   const menuBusy = runningThreads.has(sessionMenuTarget?.thread.id);
@@ -98,6 +113,10 @@ function buttons() {
   find("session-confirm").disabled = !online || menuBusy || requests;
   modelPicker.disabled = !online || busy || requests || !modelPicker.options.length;
   effortPicker.disabled = !online || busy || requests || effortPicker.options.length < 2;
+  find("session-loading").hidden = !navigating;
+  for (const row of find("session-list").querySelectorAll(".session-open")) {
+    row.setAttribute("aria-busy", String((openingThread || navigationController?.thread) === row.dataset.threadId));
+  }
 }
 
 function renderEfforts() {
@@ -143,10 +162,20 @@ const changes = panel === "bottom" ? null : mountChanges({
   list: find("change-files"), detail: find("change-detail"),
   loadDiff: (thread, turn, path) => request("file-diff", {thread_id: thread, turn_id: turn, path}),
 });
+const questions = mountQuestions({request, refresh,
+  showError: message => {const error = errorLabel(); error.textContent = message; error.hidden = false;},
+  editSecret: (question, item) => {
+    if (panel !== "top" || !window.DuoConnection?.editText) return false;
+    pendingTextEdit = {field: "question-secret", thread: activeThread, question, ident: item.id};
+    window.DuoConnection.editText("question-secret", "");
+    return true;
+  },
+});
 const conversation = panel === "bottom" ? null : mountConversation({
   panel, messages: find("messages"), older: find("older"), historyStatus: find("history-status"),
   loadAttachment: (thread, message, index) => request("attachment", {thread_id: thread, message_id: message, index}, true),
   loadOlder: (thread, before, signal) => request("history", {thread_id: thread, before}, false, signal),
+  renderQuestions: questions.render,
   retryHistory: async (id, archived) => {
     await request("select", {id, archived, retry_history: true});
     await refresh();
@@ -159,14 +188,25 @@ function render(state) {
   busy = state.busy;
   interruptible = state.interruptible;
   activeTurn = state.turn_id;
+  openingThread = state.opening_thread_id || null;
   threadActivity = new Map((state.follow_activity || []).map(thread => [thread.id, thread]));
-  runningThreads = new Set(state.running_thread_ids || (state.follow_activity || []).filter(thread => thread.status === "running").map(thread => thread.id));
+  runningThreads = new Set(state.running_thread_ids || (state.follow_activity || []).filter(thread => thread.busy || thread.status === "running").map(thread => thread.id));
   const selectionChanged = activeThread !== state.thread_id;
   const externalSelection = hasSnapshot && selectionChanged && !requests;
   bindSubmissionThreads(state.submissions, state.thread_id);
-  if (panel !== "top" && (!hasSnapshot || selectionChanged)) {
-    prompt.value = drafts.get(state.thread_id) || "";
+  const nextQuestion = state.question || null;
+  const focused = nextQuestion?.questions.find(q => q.id === nextQuestion.focus);
+  const nextDraftKey = nextQuestion ? "question:" + nextQuestion.id + ":" + nextQuestion.focus : state.thread_id;
+  if (panel !== "top") {
+    const answerChanged = nextQuestion?.id === activeQuestion?.id &&
+      nextQuestion?.answers[nextQuestion.focus] !== activeQuestion?.answers[nextQuestion.focus];
+    if (!hasSnapshot || selectionChanged || nextDraftKey !== currentDraftKey || answerChanged) {
+      prompt.value = focused?.secret ? "" : answerChanged ? nextQuestion.answers[nextQuestion.focus] || "" :
+        drafts.get(nextDraftKey) ?? nextQuestion?.answers[nextQuestion.focus] ?? "";
+    }
   }
+  activeQuestion = nextQuestion;
+  currentDraftKey = nextDraftKey;
   hasSnapshot = true;
   activeThread = state.thread_id;
   activeName = state.thread_name;
@@ -184,6 +224,7 @@ function render(state) {
   updateConnection(online ? (busy ? "running" : "ready") : "offline",
     online ? (busy ? "Mac 正在执行" : "Mac 已连接") + " · " + transport : "Codex 已断开");
   if (panel !== "bottom") {
+    questions.update(state);
     changes.update(state);
     conversation.update(state);
     const activitySignature = JSON.stringify(state.activity);
@@ -234,7 +275,7 @@ function updateConnection(state, label) {
 
 function connectionDraft() {
   if (requests) return null;
-  return {thread: activeThread, text: prompt.value, drafts: [...drafts], pendingSubmissions,
+  return {thread: activeThread, draftKey: currentDraftKey, text: prompt.value, drafts: [...drafts], pendingSubmissions,
           model: modelPicker.value, effort: effortPicker.value};
 }
 
@@ -251,8 +292,12 @@ function restoreConnectionDraft(state) {
 
 function applyRestoredDraft() {
   if (!restoredDraft || !online || restoredDraft.thread !== activeThread) return;
+  if (restoredDraft.draftKey !== undefined && restoredDraft.draftKey !== currentDraftKey) {
+    restoredDraft = null;
+    return;
+  }
   prompt.value = restoredDraft.text;
-  rememberDraft(activeThread, prompt.value);
+  rememberDraft(currentDraftKey, prompt.value);
   if ([...modelPicker.options].some(model => model.value === restoredDraft.model)) {
     modelPicker.value = restoredDraft.model;
     renderEfforts();
@@ -315,6 +360,7 @@ async function change(path, data) {
   } finally {
     requests = false;
     buttons();
+    restorePickerKeyboard();
   }
 }
 
@@ -327,6 +373,10 @@ function acceptConsoleText(field, value) {
   const pending = pendingTextEdit;
   pendingTextEdit = null;
   if (!pending || pending.field !== field) return;
+  if (field === "question-secret") {
+    if (value !== null && pending.thread === activeThread) questions.answerSecret(pending.question, pending.ident, value);
+    return;
+  }
   if (value === null) {
     if (field === "session-name") closeSessionMenu();
     return;
@@ -349,7 +399,20 @@ find("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = prompt.value;
   focusEntry();
-  if (!online || busy || requests || !text.trim()) return;
+  if (!online || requests || navigationPending || openingThread !== null) return;
+  if (activeQuestion) {
+    const question = activeQuestion;
+    const focused = question.questions.find(q => q.id === question.focus);
+    const data = {thread_id: activeThread, request_id: question.id};
+    if (!focused.secret && text.trim()) {
+      if (!await change("question", {...data, action: "answer", question_id: focused.id, value: text})) return;
+    }
+    if (activeQuestion?.id === question.id && activeQuestion.ready) {
+      await change("question", {...data, action: "submit", model: modelPicker.value || null, effort: effortPicker.value || null});
+    }
+    return;
+  }
+  if (busy || !text.trim()) return;
   let submission = pendingSubmissions.find(item => item.thread === activeThread && item.text === text);
   if (!submission) {
     submission = {id: crypto.randomUUID(), text, thread: activeThread};
@@ -366,9 +429,30 @@ find("composer").addEventListener("submit", async (event) => {
   }
 });
 async function openComposer(action, data) {
-  if (!(await change(action, data))) return;
-  if (panel === "bottom") tab("chat");
+  if (!online) return;
+  const ticket = ++navigationRequest;
+  navigationController?.abort();
+  const controller = navigationController = new AbortController();
+  controller.thread = data.id || null;
+  navigationPending = true;
+  closeSessionMenu();
   buttons();
+  try {
+    await request(action, data, false, controller.signal);
+    if (ticket !== navigationRequest) return;
+    await refresh();
+    if (panel === "bottom") tab("chat");
+  } catch (failure) {
+    if (ticket === navigationRequest && !controller.signal.aborted) {
+      const error = errorLabel(); error.textContent = failure.message; error.hidden = false;
+    }
+  } finally {
+    if (ticket === navigationRequest) {
+      navigationPending = false;
+      navigationController = null;
+      buttons();
+    }
+  }
 }
 
 find("task-tab").addEventListener("click", () => openComposer("new", {}));
@@ -391,7 +475,7 @@ function tab(mode) {
   find("sessions-tab").setAttribute("aria-pressed", String(view === "all"));
   find("pinned-tab").setAttribute("aria-pressed", String(view === "pinned"));
   focusEntry();
-  if (changed && panel === "bottom") window.DuoConnection?.consoleInputChanged?.();
+  if (panel === "bottom") window.DuoConnection?.consoleInputChanged?.();
 }
 
 async function loadSessions(append = false) {
@@ -447,12 +531,13 @@ function updateSessionStatus(button) {
   const id = button.dataset.threadId;
   const activity = threadActivity.get(id);
   const running = runningThreads.has(id);
+  const waiting = activity?.status === "waiting";
   const status = button.querySelector(".session-running");
-  status.hidden = !running && !activity?.unread;
-  status.textContent = running ? "运行中" : "未读";
+  status.hidden = !running && !activity?.unread && !waiting;
+  status.textContent = waiting ? "待回答" : running ? "运行中" : "未读";
   status.classList.toggle("unread", Boolean(activity?.unread && !running));
   const meta = button.querySelector(".session-meta");
-  meta.textContent = activity?.summary || (running ? "运行中" : "");
+  meta.textContent = waiting ? "等待回答" : activity?.summary || (running ? "运行中" : "");
   meta.hidden = !meta.textContent;
 }
 
@@ -652,10 +737,15 @@ find("session-rename").addEventListener("submit", async event => {
   await runSessionAction(target, "rename", {name});
 });
 prompt.addEventListener("input", () => {
-  rememberDraft(activeThread, prompt.value);
+  const secret = activeQuestion?.questions.find(q => q.id === activeQuestion.focus)?.secret;
+  if (!secret) rememberDraft(currentDraftKey, prompt.value);
   buttons();
 });
-modelPicker.addEventListener("change", () => { renderEfforts(); buttons(); });
+function restorePickerKeyboard() {
+  if (panel === "bottom") {focusEntry(); window.DuoConnection?.consoleInputChanged?.();}
+}
+modelPicker.addEventListener("change", () => { renderEfforts(); buttons(); restorePickerKeyboard(); });
+effortPicker.addEventListener("change", restorePickerKeyboard);
 prompt.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
     event.preventDefault();

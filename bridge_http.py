@@ -14,6 +14,7 @@ ASSETS = {
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/changes-panel.js": ("changes-panel.js", "application/javascript; charset=utf-8"),
     "/conversation.js": ("conversation.js", "application/javascript; charset=utf-8"),
+    "/questions.js": ("questions.js", "application/javascript; charset=utf-8"),
     "/diff-view.js": ("diff-view.js", "application/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/vendor/markdown-it.min.js": ("vendor/markdown-it.min.js", "application/javascript; charset=utf-8"),
@@ -93,6 +94,9 @@ def make_handler(codex, token):
                     codex.interrupt(data.get("thread_id"), data.get("turn_id"))
                 elif path == "/api/new":
                     codex.reset()
+                elif path == "/api/question":
+                    codex.answer_question(data.get("thread_id"), data.get("request_id"), data.get("action"),
+                                          data.get("question_id"), data.get("value"), data.get("model"), data.get("effort"))
                 elif path == "/api/threads":
                     search = data.get("search", "")
                     cursor = data.get("cursor")

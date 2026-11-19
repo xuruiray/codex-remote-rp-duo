@@ -84,11 +84,11 @@ final class BridgePanel extends FrameLayout {
 
             @JavascriptInterface
             public void editText(String field, String value) {
-                if (!field.equals("session-name")) return;
+                if (!field.equals("session-name") && !field.equals("question-secret")) return;
                 post(() -> {
                     if (panel != Panel.TOP || !started || !ready) return;
                     long page = navigation;
-                    consoleTextInput.show(value, answer -> {
+                    consoleTextInput.show(value, field.equals("question-secret"), answer -> {
                         if (page != navigation || !started || !ready) return;
                         String result = answer == null ? "null" : org.json.JSONObject.quote(answer);
                         web.evaluateJavascript("window.DuoPanel?.acceptConsoleText("

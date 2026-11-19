@@ -18,7 +18,7 @@ function desktopUserText(text) {
 
 const MAX_COMMAND_GROUP = 32;
 
-export function mountConversation({messages, older, historyStatus, panel, loadAttachment, loadOlder, retryHistory}) {
+export function mountConversation({messages, older, historyStatus, panel, loadAttachment, loadOlder, retryHistory, renderQuestions}) {
   let thread = null;
   let archived = false;
   let latestEntries = [];
@@ -123,32 +123,6 @@ export function mountConversation({messages, older, historyStatus, panel, loadAt
     }
   }
 
-  function renderQuestions(questions) {
-    const cards = document.createElement("div");
-    cards.className = "question-cards";
-    cards.setAttribute("aria-label", "Codex 的提问");
-    for (const question of questions) {
-      const card = document.createElement("section");
-      card.className = "question-card";
-      const title = document.createElement("p");
-      title.className = "question-title";
-      title.textContent = question.title;
-      card.append(title);
-      if (question.options?.length) {
-        const options = document.createElement("ol");
-        options.className = "question-options";
-        for (const option of question.options) {
-          const row = document.createElement("li");
-          row.textContent = option;
-          options.append(row);
-        }
-        card.append(options);
-      }
-      cards.append(card);
-    }
-    return cards;
-  }
-
   function renderEntry(entry) {
     if (entry.role === "trace" && !entry.text && !entry.output && !entry.diff) return null;
     const signature = JSON.stringify(entry);
@@ -207,7 +181,7 @@ export function mountConversation({messages, older, historyStatus, panel, loadAt
       if (isUser) content.textContent = text;
       else content.innerHTML = markdown.render(text || (entry.questions?.length ? "" : "…"));
       const attachments = userText && renderUserAttachments(entry, userText);
-      const questions = !isUser && entry.questions?.length ? renderQuestions(entry.questions) : null;
+      const questions = !isUser && entry.questions?.length ? renderQuestions(entry, entry.questions) : null;
       node.replaceChildren(label, ...[attachments, content].filter(Boolean));
       if (text && entry.complete !== false) {
         const toggle = document.createElement("button");

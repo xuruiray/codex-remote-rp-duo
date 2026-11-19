@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app_server import AppServer, RpcError
 from change_set import TurnChanges
+from questions import QuestionSet
 from session_messages import MAX_DETAIL, export_entry, read_attachment_image, session_entry, shorten
 
 
@@ -33,6 +34,9 @@ class Chat:
     history_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     outcome: str | None = None
     unread: bool = False
+    question: QuestionSet | None = None
+    last_model: str | None = None
+    last_effort: str | None = None
     changes: TurnChanges = field(init=False)
 
     def __post_init__(self):
@@ -67,8 +71,12 @@ class Chat:
     def history_slice(self, end):
         start = max(0, end - PAGE_SIZE)
         anchor = self.messages[start]["id"] if start < len(self.messages) else "oldest"
+        entries = [export_entry(message) for message in self.messages[start:end]]
+        for entry in entries:
+            if self.question and entry["id"] == self.question.item_id:
+                entry["question_request"] = self.question.public()
         return {
-            "messages": [export_entry(message) for message in self.messages[start:end]],
+            "messages": entries,
             "history_before": anchor if start or self.history_cursor else None,
             "history_error": self.history_error,
         }
@@ -82,7 +90,9 @@ class Codex:
         self.selected = Chat(workspace)
         self.chats = OrderedDict()
         self.submissions = OrderedDict()
-        self._rpc = AppServer(executable, workspace, self.notify, self.disconnected)
+        self.selection_request = 0
+        self.opening_thread = None
+        self._rpc = AppServer(executable, workspace, self.notify, self.disconnected, self.request_input)
         try:
             self._initialize()
         except BaseException:
@@ -91,7 +101,8 @@ class Codex:
 
     def _initialize(self):
         self._rpc.call("initialize", {
-            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.22"},
+            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.23"},
+            "capabilities": {"experimentalApi": True},
         })
         self._rpc.notify("initialized")
         models = []
@@ -175,21 +186,106 @@ class Codex:
         chat.outcome = outcome
         chat.unread = chat is not self.selected
 
+    @staticmethod
+    def replace_question(chat, question):
+        if chat.question:
+            if chat.question.status == "pending":
+                chat.question.status = "expired"
+            for entry in chat.messages:
+                if entry["id"] == chat.question.item_id:
+                    entry["question_request"] = chat.question.public()
+        chat.question = question
+
+    def request_input(self, ident, params):
+        with self.lock:
+            chat = self.chats.get(params["threadId"])
+            if not chat or not chat.busy or chat.turn != params["turnId"]:
+                raise ValueError("提问对应的任务已经结束")
+            if chat.question and chat.question.status == "pending" and chat.question.rpc_id == ident:
+                return
+            if chat.question and chat.question.status == "pending" and chat.question.rpc_id is not None:
+                raise ValueError("请先完成当前会话中的提问")
+            question = QuestionSet(params["itemId"], params["turnId"], params["questions"],
+                                   rpc_id=ident, blocking=params["isBlocking"] is True)
+            self.replace_question(chat, question)
+            chat.messages.append({"id": question.item_id, "role": "assistant", "text": "",
+                                  "questions": [{"title": q["title"]} for q in question.questions], "complete": True})
+            chat.add_event("Codex 等待你的回答")
+            chat.unread = chat is not self.selected
+
+    def answer_question(self, thread_id, request_id, action, question_id=None, value=None, model=None, effort=None):
+        with self.action:
+            with self.lock:
+                chat = self.selected
+                question = chat.question
+                if thread_id != chat.id or not question or request_id != question.id:
+                    raise ValueError("会话或提问已切换，请重新查看")
+                if question.status == "answered" and action == "submit":
+                    return
+                if question.status != "pending":
+                    raise ValueError("这条提问已结束")
+                if action == "focus":
+                    if question.question(question_id) is None:
+                        raise ValueError("提问已变化")
+                    question.focus = question_id
+                    return
+                if action == "answer":
+                    question.answer(question_id, value)
+                    return
+                if action == "cancel":
+                    if question.rpc_id is not None:
+                        self._rpc.reply(question.rpc_id, {"answers": {}})
+                    question.status = "dismissed"
+                    return
+                if action != "submit":
+                    raise ValueError("提问操作无效")
+                response = question.response()
+                if question.rpc_id is not None:
+                    self._rpc.reply(question.rpc_id, response)
+                    question.status = "answered"
+                    chat.add_event("回答已提交给 Codex")
+                    return
+                if chat.busy:
+                    raise ValueError("Codex 正在结束本轮，请稍后提交回答")
+                question.status = "submitting"
+                text = question.message()
+                chosen_model = model or chat.last_model
+                chosen_effort = effort if effort is not None else chat.last_effort
+            # start_prompt acquires action itself. Its request id makes a lost HTTP response retry safe.
+        try:
+            self.start_prompt(text, chosen_model, chosen_effort,
+                              str(uuid.uuid5(uuid.NAMESPACE_URL, "duo-answer:" + request_id)), thread_id)
+            with self.lock:
+                question.status = "answered"
+                for entry in chat.messages:
+                    if entry["id"] == question.item_id:
+                        entry["question_request"] = question.public()
+        except (ValueError, OSError, RuntimeError):
+            with self.lock:
+                if chat.question is question:
+                    question.status = "pending"
+            raise
+
     def _follow_activity(self):
         return [{
             "id": chat.id,
             "title": chat.name or "未命名对话",
-            "status": "running" if chat.busy else chat.outcome,
+            "status": "waiting" if chat.question and chat.question.status == "pending" else "running" if chat.busy else chat.outcome,
             "unread": chat.unread,
+            "busy": chat.busy,
             "follow": chat.busy or chat.unread or chat is self.selected,
             "summary": chat.activity[-1] if chat.activity else "",
         } for chat in reversed(self.chats.values()) if not chat.archived and (
-            chat.busy or chat.outcome
+            chat.busy or chat.outcome or (chat.question and chat.question.status == "pending")
         )]
 
     def notify(self, method, params):
         with self.lock:
             chat = self.chats.get(params.get("threadId"))
+            if method == "serverRequest/resolved":
+                if chat and chat.question and chat.question.rpc_id == params.get("requestId") and chat.question.status == "pending":
+                    chat.question.status = "expired"
+                return
             if not chat or not chat.busy:
                 return
             turn_id = params.get("turnId") or (params.get("turn") or {}).get("id")
@@ -235,6 +331,10 @@ class Codex:
                 kind = item.get("type")
                 if kind != "userMessage":
                     chat.update_item(item, method == "item/completed")
+                if (kind == "agentMessage" and item.get("questions") and method == "item/completed"
+                        and not (chat.question and chat.question.item_id == item["id"])
+                        and not (chat.question and chat.question.rpc_id is not None and chat.question.status == "pending")):
+                    self.replace_question(chat, QuestionSet(item["id"], chat.turn, item["questions"]))
                 if kind == "fileChange" and params["turnId"] == chat.changes.turn_id:
                     chat.changes.apply_item(item)
                 if kind in {"commandExecution", "fileChange"}:
@@ -249,6 +349,8 @@ class Codex:
                 status = {"completed": "任务完成", "interrupted": "任务已停止",
                           "failed": "任务失败"}.get(outcome, "任务已结束")
                 self.finish_chat(chat, outcome or "ended")
+                if chat.question and chat.question.blocking and chat.question.status == "pending":
+                    chat.question.status = "expired"
                 chat.add_event(f"{status} · {error['message']}" if error.get("message") else status)
                 chat.submission = None
                 chat.turn = None
@@ -303,6 +405,8 @@ class Codex:
                     return
                 if submission is not None and chat.id != expected_thread:
                     raise ValueError("会话已切换，请确认要发送到的会话")
+                if self.opening_thread is not None:
+                    raise ValueError("正在打开会话，请稍后发送")
                 if chat.busy or chat.archived or not self._rpc.connected:
                     raise ValueError("当前会话无法接收新任务")
             if chat.id is None:
@@ -324,6 +428,8 @@ class Codex:
                     if expired is not None:
                         self.submissions.pop(expired)
                 chat.submission = submission
+                chat.last_model = model
+                chat.last_effort = effort
                 chat.outcome = None
                 chat.unread = False
                 workspace = chat.workspace
@@ -350,6 +456,8 @@ class Codex:
 
     def reset(self):
         with self.action, self.lock:
+            self.selection_request += 1
+            self.opening_thread = None
             self.show_chat(Chat(self.workspace))
 
     def pinned_section(self, create=False):
@@ -405,16 +513,23 @@ class Codex:
         }
 
     def select(self, thread_id, archived, retry_history=False):
-        with self.action:
-            with self.lock:
-                cached = self.chats.get(thread_id)
-                if retry_history and thread_id != self.selected.id:
-                    raise ValueError("会话已切换，请重新打开历史")
-                if cached and (cached.busy or (cached.archived == archived and not cached.history_error
-                                                 and (cached.loaded or cached is self.selected))):
-                    self.show_chat(cached)
-                    return
+        with self.action, self.lock:
+            cached = self.chats.get(thread_id)
+            if retry_history and thread_id != self.selected.id:
+                raise ValueError("会话已切换，请重新打开历史")
+            self.selection_request += 1
+            ticket = self.selection_request
+            self.opening_thread = thread_id
+            if cached and (cached.busy or (cached.archived == archived and not cached.history_error
+                                             and (cached.loaded or cached is self.selected))):
+                self.opening_thread = None
+                self.show_chat(cached)
+                return
+        try:
             thread = self._rpc.call("thread/read", {"threadId": thread_id, "includeTurns": False})["thread"]
+            with self.lock:
+                if ticket != self.selection_request:
+                    return
             chat = Chat(Path(thread["cwd"]), id=thread_id,
                         name=thread.get("name") or thread.get("preview", "")[:100], archived=archived)
             try:
@@ -430,11 +545,21 @@ class Codex:
                         chat.changes.apply_item(item)
             chat.messages = self.turn_entries(page)
             chat.history_cursor = page.get("nextCursor")
+            latest_question = next((entry for entry in reversed(chat.messages) if entry["role"] in {"assistant", "user"}), None)
+            if latest_question and latest_question.get("questions"):
+                chat.question = (cached.question if cached and cached.question and cached.question.item_id == latest_question["id"]
+                                 else QuestionSet(latest_question["id"], chat.changes.turn_id, latest_question["questions"]))
             with self.lock:
+                if ticket != self.selection_request:
+                    return
                 if cached:
                     chat.outcome = cached.outcome
                     chat.activity = cached.activity
                 self.show_chat(chat)
+        finally:
+            with self.lock:
+                if ticket == self.selection_request:
+                    self.opening_thread = None
 
     def initial_history(self, thread_id):
         try:
@@ -551,6 +676,8 @@ class Codex:
                 "interruptible": chat.turn is not None,
                 "turn_id": chat.turn,
                 "activity": list(chat.activity),
+                "opening_thread_id": self.opening_thread,
+                "question": chat.question.public() if chat.question and chat.question.status in {"pending", "submitting"} else None,
             }
             if include_messages:
                 data.update(chat.history_slice(len(chat.messages)))

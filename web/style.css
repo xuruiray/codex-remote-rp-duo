@@ -274,8 +274,16 @@ body[data-panel=bottom] #composer { max-height: none; }
 .question-cards { display: grid; gap: 9px; margin-top: 10px; }
 .question-card { border: 1px solid #78602e; border-radius: 10px; padding: 11px 14px; background: var(--surface); }
 .question-title { margin: 0; color: var(--yellow); font-weight: 650; white-space: pre-wrap; overflow-wrap: anywhere; }
-.question-options { margin: 9px 0 0; padding-left: 1.5em; color: var(--text); }
-.question-options li { padding: 3px 0 3px 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.question-options li::marker { color: var(--muted); }
+.question-card.is-current { border-color: var(--yellow); }
+.question-options { display: grid; gap: 7px; margin-top: 9px; }
+.question-options button { text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 40px; }
+.question-options button[aria-pressed=true] { border-color: var(--yellow); color: var(--yellow); }
+.question-options small { display: block; font-size: .8rem; color: var(--muted); font-weight: 400; margin-top: 3px; }
+.question-edit { margin-top: 7px; }
+.question-answer { margin: 8px 0 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.question-actions { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: .85rem; }
+.question-actions button { min-height: 36px; }
+.session-open[aria-busy=true] { outline: 1px dashed var(--yellow); outline-offset: -2px; }
+#session-loading { color: var(--muted); font-size: .78rem; white-space: nowrap; }
 
 #history-status { flex: none; color: var(--muted); font-size: .78rem; white-space: nowrap; }

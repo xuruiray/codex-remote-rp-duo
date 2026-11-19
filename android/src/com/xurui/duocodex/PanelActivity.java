@@ -95,7 +95,7 @@ abstract class PanelActivity extends Activity {
         super.onWindowFocusChanged(focused);
         if (focused) updateSystemBars();
         if (!focused && panel != Panel.TOP) CONTROLLER.reset();
-        if (focused && keyboard != null) keyboard.focus();
+        if (focused && keyboard != null) keyboard.restore();
     }
 
     @Override
