@@ -92,4 +92,4 @@ CI 检查 Python 回归、Web JavaScript 语法、Shell 语法和文档本地链
 
 提交问题前可先看[排障指南](docs/troubleshooting.md)，再使用 [Bug 反馈](https://github.com/xuruiray/codex-remote-rp-duo/issues/new?template=bug_report.yml)或[功能建议](https://github.com/xuruiray/codex-remote-rp-duo/issues/new?template=feature_request.yml)模板。贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-项目尚未声明整体代码许可证；参考开源项目不代表本仓库已按某种开源协议授权。第三方代码与品牌说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。仓库组织参考了 [Codex、scrcpy 和 Happy 的文档](docs/references.md)。
+项目采用 [MIT 许可证](LICENSE)。第三方代码保留原有许可证，品牌标识的权利说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。仓库组织参考了 [Codex、scrcpy 和 Happy 的文档](docs/references.md)。
