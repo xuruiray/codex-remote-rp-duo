@@ -11,6 +11,13 @@
 </head>
 <body>
   <header>
+    <button id="sidebar-toggle" type="button" class="subtle" aria-controls="session-sidebar" aria-expanded="true" aria-label="收起会话列表" title="收起会话列表" hidden>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false">
+        <rect x="2" y="3" width="16" height="14" rx="2" />
+        <path d="M7 3v14" />
+        <path class="sidebar-arrow" d="m13 7-3 3 3 3" />
+      </svg>
+    </button>
     <div class="brand">
       <img src="/assets/chatgpt-icon.png" alt="" width="29" height="29">
       <span id="connection" data-state="connecting" role="status"><span class="sr-only">正在连接 Mac</span></span>

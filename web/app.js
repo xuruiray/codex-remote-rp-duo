@@ -662,6 +662,31 @@ prompt.addEventListener("keydown", (event) => {
     find("composer").requestSubmit();
   }
 });
+if (panel === "top") {
+  const toggle = find("sidebar-toggle");
+  const storageKey = "duo-codex-session-sidebar-collapsed";
+  function setSidebarCollapsed(collapsed) {
+    closeSessionMenu();
+    conversation.preserveReadingPosition(() => {
+      find("session-sidebar").hidden = collapsed;
+      document.body.dataset.sidebarCollapsed = String(collapsed);
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.title = collapsed ? "展开会话列表" : "收起会话列表";
+      toggle.setAttribute("aria-label", toggle.title);
+    });
+  }
+  toggle.hidden = false;
+  try {
+    setSidebarCollapsed(localStorage.getItem(storageKey) === "true");
+  } catch (_) {
+    setSidebarCollapsed(false);
+  }
+  toggle.addEventListener("click", () => {
+    const collapsed = !find("session-sidebar").hidden;
+    setSidebarCollapsed(collapsed);
+    try { localStorage.setItem(storageKey, String(collapsed)); } catch (_) { /* Keep the live preference. */ }
+  });
+}
 tab(view);
 buttons();
 function scrollReading(pixels) {

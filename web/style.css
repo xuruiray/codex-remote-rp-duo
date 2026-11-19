@@ -114,6 +114,11 @@ body[data-panel=top] #progress { max-width: min(30%, 17rem); }
 body[data-panel=top] main { width: 100%; margin: 0; padding: 0; gap: 0; }
 body[data-panel=top] #conversation { padding: 10px 16px; }
 body[data-panel=top] #changes { margin: 10px 16px 10px 0; }
+#sidebar-toggle { flex: none; display: grid; place-items: center; width: 32px; min-height: 32px; padding: 4px; border-color: transparent; background: transparent; color: var(--muted); }
+#sidebar-toggle:hover, #sidebar-toggle:focus-visible { background: var(--button-surface); color: var(--yellow); }
+#sidebar-toggle[aria-expanded=false] { color: var(--yellow); }
+#sidebar-toggle[aria-expanded=false] .sidebar-arrow { transform: translateX(24px) scaleX(-1); }
+body[data-panel=top][data-sidebar-collapsed=true] #messages { padding-inline: 0; }
 body[data-panel=top] #messages {
   padding-inline: max(0px, calc((100% - var(--reading-width)) / 2));
   padding-block: 3px 7px;

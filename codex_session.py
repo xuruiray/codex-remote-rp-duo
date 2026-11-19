@@ -91,7 +91,7 @@ class Codex:
 
     def _initialize(self):
         self._rpc.call("initialize", {
-            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.21"},
+            "clientInfo": {"name": "duo_codex", "title": "Codex", "version": "0.1.22"},
         })
         self._rpc.notify("initialized")
         models = []

@@ -428,6 +428,19 @@ export function mountConversation({messages, older, historyStatus, panel, loadAt
     }
   });
 
+  function preserveReadingPosition(changeLayout) {
+    const top = messages.getBoundingClientRect().top;
+    const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 45;
+    const anchor = [...messages.children].find(node => node.getBoundingClientRect().bottom > top);
+    const offset = anchor ? anchor.getBoundingClientRect().top - top : 0;
+    changeLayout();
+    measureMessageDisclosures();
+    if (nearBottom) messages.scrollTop = messages.scrollHeight;
+    else if (anchor) {
+      messages.scrollTop += anchor.getBoundingClientRect().top - messages.getBoundingClientRect().top - offset;
+    }
+  }
+
   new ResizeObserver(measureMessageDisclosures).observe(messages);
-  return {update};
+  return {update, preserveReadingPosition};
 }
