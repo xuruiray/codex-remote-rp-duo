@@ -1,0 +1,49 @@
+name: 问题反馈
+description: 报告可复现的连接、双屏或会话问题。
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请先阅读排障文档。不要附真实会话、完整设备序列号、配对 token、私钥或未脱敏日志。
+  - type: input
+    id: version
+    attributes:
+      label: APK 版本与 Mac 端代码版本
+      placeholder: 例如 v0.1.24；Mac 端的 tag 或提交 SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: Mac 系统、Codex 组件版本/来源、Android 系统、设备型号、连接方式。
+      value: |
+        macOS：
+        Codex 组件版本与来源：
+        Android：
+        设备型号：
+        连接方式（USB / Wi-Fi）：
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 说明在哪个屏幕、点击什么，以及选择、取消或切换的顺序。
+      placeholder: |
+        1. 在下屏打开模型菜单
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏截图或必要日志
+      description: 使用示例内容；只提供与问题相关的片段，不上传整个运行数据目录。

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 排障与已知限制
+    url: https://github.com/xuruiray/codex-remote-rp-duo/blob/main/docs/troubleshooting.md
+    about: 先查看连接、构建、证书、签名及已知限制。
