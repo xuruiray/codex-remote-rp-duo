@@ -4,7 +4,7 @@
 
 ## 下载与校验
 
-仓库为 private，下载者需要相应 GitHub 权限。现成 APK 适用于构建时的配对 CA 环境；首次在自己的 Mac 使用应按[安装指南](installation.md)自行构建。
+源码和 Release 均可公开访问，可直接从 [GitHub Releases](https://github.com/xuruiray/codex-remote-rp-duo/releases) 下载附件。现成 APK 适用于构建时的配对 CA 环境；首次在自己的 Mac 使用应按[安装指南](installation.md)自行构建。
 
 使用 GitHub CLI 下载最新 Release 的 APK 和校验文件：
 
